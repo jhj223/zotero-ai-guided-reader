@@ -27,8 +27,9 @@ export function getLibraryMenuState<T extends PdfInspectableItem>(
     return { visible: false, enabled: false };
   }
 
-  const enabled = item
-    .getAttachments()
-    .some((id) => lookupItem(id)?.isPDFAttachment() === true);
+  const enabled = item.getAttachments().some((id) => {
+    const attachment = lookupItem(id);
+    return attachment ? attachment.isPDFAttachment() : false;
+  });
   return { visible: true, enabled, item };
 }
