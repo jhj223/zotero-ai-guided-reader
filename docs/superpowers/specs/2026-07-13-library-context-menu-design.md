@@ -23,7 +23,7 @@
 
 ### Zotero 7 兼容回退
 
-- 菜单 API 不存在时，使用模板现有的 `ztoolkit.Menu.register("item", ...)`。
+- 菜单 API 不存在时，在每个主窗口的 `#zotero-itemmenu` 中注册受控的 XUL `menuitem`，并在窗口或插件关闭时移除监听器和节点。当前依赖的 `zotero-plugin-toolkit@5.1.4` 已不暴露旧模板示例中的 `ztoolkit.Menu`，因此不依赖该过时 helper。
 - `registerSection()` 不存在而 `registerView()` 存在时，保留旧视图注册路径。
 - 所有兼容判断均使用运行时特性检测，不根据版本字符串猜测接口。
 
