@@ -34,11 +34,7 @@ test("opens the resolved PDF before focusing the registered pane", async () => {
     attempts: 1,
   });
 
-  assert.deepEqual(calls, [
-    "resolve",
-    "open:42",
-    "focus:plugin-guided-reader",
-  ]);
+  assert.deepEqual(calls, ["resolve", "open:42", "focus:plugin-guided-reader"]);
   assert.equal(contextPane.collapsed, false);
   assert.equal(contextPane.context.mode, "item");
   assert.deepEqual(result, { attachment, paneFocused: true });

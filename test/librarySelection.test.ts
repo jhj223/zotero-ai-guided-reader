@@ -21,11 +21,14 @@ function makeItem(options: {
 
 test("enables AI guided reading for one selected PDF", () => {
   const pdf = makeItem({ id: 1, pdf: true });
-  assert.deepEqual(getLibraryMenuState([pdf], () => undefined), {
-    visible: true,
-    enabled: true,
-    item: pdf,
-  });
+  assert.deepEqual(
+    getLibraryMenuState([pdf], () => undefined),
+    {
+      visible: true,
+      enabled: true,
+      item: pdf,
+    },
+  );
 });
 
 test("enables a regular item when one child attachment is a PDF", () => {
@@ -34,11 +37,14 @@ test("enables a regular item when one child attachment is a PDF", () => {
     [2, makeItem({ id: 2 })],
     [3, makeItem({ id: 3, pdf: true })],
   ]);
-  assert.deepEqual(getLibraryMenuState([paper], (id) => children.get(id)), {
-    visible: true,
-    enabled: true,
-    item: paper,
-  });
+  assert.deepEqual(
+    getLibraryMenuState([paper], (id) => children.get(id)),
+    {
+      visible: true,
+      enabled: true,
+      item: paper,
+    },
+  );
 });
 
 test("keeps the menu visible but disabled for a paper without a PDF", () => {
@@ -52,10 +58,13 @@ test("keeps the menu visible but disabled for a paper without a PDF", () => {
 test("hides the menu for multiple selection or unsupported item types", () => {
   const paper = makeItem({ id: 1, regular: true });
   const second = makeItem({ id: 2, regular: true });
-  assert.deepEqual(getLibraryMenuState([paper, second], () => undefined), {
-    visible: false,
-    enabled: false,
-  });
+  assert.deepEqual(
+    getLibraryMenuState([paper, second], () => undefined),
+    {
+      visible: false,
+      enabled: false,
+    },
+  );
   assert.deepEqual(
     getLibraryMenuState([makeItem({ id: 3 })], () => undefined),
     { visible: false, enabled: false },
