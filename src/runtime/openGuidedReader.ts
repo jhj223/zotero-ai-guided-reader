@@ -3,6 +3,8 @@ import { resolvePdfAttachment } from "./zoteroItems";
 
 interface PaneContainer {
   tabType?: string;
+  collapsed?: boolean;
+  pinnedPane?: string;
   getEnabledPane?: (paneID: string) => unknown;
   scrollToPane?: (
     paneID: string,
@@ -79,6 +81,12 @@ export async function focusGuidedReaderPane(
       container.getEnabledPane?.(paneID) &&
       container.scrollToPane
     ) {
+      // Zotero 9 cold-starts the reader item-details asynchronously, and a
+      // later render discards a plain scrollToPane target. Pin the pane so
+      // every subsequent render re-applies it, expand item-details (a
+      // collapsed container makes scrollToPane return early), then scroll.
+      container.pinnedPane = paneID;
+      if (container.collapsed) container.collapsed = false;
       await container.scrollToPane(paneID, "instant");
       return true;
     }

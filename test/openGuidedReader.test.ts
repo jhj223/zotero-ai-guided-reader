@@ -79,3 +79,94 @@ test("returns a non-throwing fallback when pane activation times out", async () 
 
   assert.equal(focused, false);
 });
+
+test("pins the guided reader pane so cold-start renders keep it", async () => {
+  const container = {
+    tabType: "reader",
+    collapsed: false,
+    pinnedPane: "",
+    getEnabledPane: () => ({}),
+    scrollToPane: async () => {},
+  };
+
+  const focused = await focusGuidedReaderPane(
+    {
+      ZoteroContextPane: {
+        collapsed: true,
+        context: { mode: "notes" },
+        sidenav: { container },
+      },
+    },
+    "plugin-guided-reader",
+    { attempts: 1, delay: async () => {} },
+  );
+
+  assert.equal(focused, true);
+  assert.equal(container.pinnedPane, "plugin-guided-reader");
+});
+
+test("expands a collapsed item-details before scrolling", async () => {
+  const calls: string[] = [];
+  const container = {
+    tabType: "reader",
+    collapsed: true,
+    pinnedPane: "",
+    getEnabledPane: () => ({}),
+    scrollToPane: async (id: string) => {
+      // Zotero's item-details returns early from scrollToPane while collapsed.
+      if (container.collapsed) return;
+      calls.push(`scroll:${id}`);
+    },
+  };
+
+  const focused = await focusGuidedReaderPane(
+    {
+      ZoteroContextPane: {
+        collapsed: true,
+        context: { mode: "notes" },
+        sidenav: { container },
+      },
+    },
+    "plugin-guided-reader",
+    { attempts: 1, delay: async () => {} },
+  );
+
+  assert.equal(focused, true);
+  assert.equal(container.collapsed, false);
+  assert.deepEqual(calls, ["scroll:plugin-guided-reader"]);
+});
+
+test("keeps the target pane after a cold-start re-render", async () => {
+  const container = {
+    tabType: "reader",
+    collapsed: false,
+    pinnedPane: "",
+    currentPane: "",
+    getEnabledPane: () => ({}),
+    scrollToPane(id: string) {
+      container.currentPane = id;
+    },
+    // Reproduces Zotero's async cold-start render: the transient scroll target
+    // is discarded, then whichever pane is pinned gets re-applied.
+    render() {
+      container.currentPane = container.pinnedPane;
+    },
+  };
+
+  const focused = await focusGuidedReaderPane(
+    {
+      ZoteroContextPane: {
+        collapsed: true,
+        context: { mode: "notes" },
+        sidenav: { container },
+      },
+    },
+    "plugin-guided-reader",
+    { attempts: 1, delay: async () => {} },
+  );
+
+  assert.equal(focused, true);
+  assert.equal(container.currentPane, "plugin-guided-reader");
+  container.render();
+  assert.equal(container.currentPane, "plugin-guided-reader");
+});

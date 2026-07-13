@@ -29,6 +29,32 @@ test("library context menu has Chinese and English Fluent labels", async () => {
     readSource("../addon/locale/en-US/mainWindow.ftl"),
   ]);
 
-  assert.match(chinese, /library-menu-ai-guided-reading = AI 带读/);
-  assert.match(english, /library-menu-ai-guided-reading = AI Guided Reader/);
+  // Zotero 9 MenuManager sets data-l10n-id on a XUL <menuitem>, which renders
+  // its `label` attribute. A flat Fluent value only sets textContent and leaves
+  // the menu item blank, so the id must expose a `.label` attribute.
+  assert.match(
+    chinese,
+    /library-menu-ai-guided-reading =\r?\n\s+\.label = AI 带读/,
+  );
+  assert.match(
+    english,
+    /library-menu-ai-guided-reading =\r?\n\s+\.label = AI Guided Reader/,
+  );
+});
+
+test("library menu label is a XUL attribute, not a blank flat value", async () => {
+  const [chinese, english] = await Promise.all([
+    readSource("../addon/locale/zh-CN/mainWindow.ftl"),
+    readSource("../addon/locale/en-US/mainWindow.ftl"),
+  ]);
+
+  for (const source of [chinese, english]) {
+    // A flat `id = text` value renders blank on a XUL menuitem in Zotero 9.
+    assert.doesNotMatch(
+      source,
+      /^library-menu-ai-guided-reading = \S/m,
+      "menu label must use a `.label` attribute, not a flat Fluent value",
+    );
+    assert.match(source, /library-menu-ai-guided-reading =\r?\n\s+\.label = /);
+  }
 });
