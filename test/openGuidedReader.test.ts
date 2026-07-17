@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   focusGuidedReaderPane,
   openGuidedReaderForItem,
+  PIN_RESTORE_DELAY_MS,
 } from "../src/runtime/openGuidedReader";
 
 test("opens the resolved PDF before focusing the registered pane", async () => {
@@ -80,11 +81,44 @@ test("returns a non-throwing fallback when pane activation times out", async () 
   assert.equal(focused, false);
 });
 
-test("pins the guided reader pane so cold-start renders keep it", async () => {
+test("holds the pin through the grace period, then restores it", async () => {
   const container = {
     tabType: "reader",
     collapsed: false,
     pinnedPane: "",
+    getEnabledPane: () => ({}),
+    scrollToPane: async () => {},
+  };
+  const pinDuringGrace: string[] = [];
+
+  const focused = await focusGuidedReaderPane(
+    {
+      ZoteroContextPane: {
+        collapsed: true,
+        context: { mode: "notes" },
+        sidenav: { container },
+      },
+    },
+    "plugin-guided-reader",
+    {
+      attempts: 1,
+      delay: async (ms) => {
+        if (ms === PIN_RESTORE_DELAY_MS)
+          pinDuringGrace.push(container.pinnedPane);
+      },
+    },
+  );
+
+  assert.equal(focused, true);
+  assert.deepEqual(pinDuringGrace, ["plugin-guided-reader"]);
+  assert.equal(container.pinnedPane, "");
+});
+
+test("restores the user's previously pinned pane", async () => {
+  const container = {
+    tabType: "reader",
+    collapsed: false,
+    pinnedPane: "attachments",
     getEnabledPane: () => ({}),
     scrollToPane: async () => {},
   };
@@ -102,7 +136,37 @@ test("pins the guided reader pane so cold-start renders keep it", async () => {
   );
 
   assert.equal(focused, true);
-  assert.equal(container.pinnedPane, "plugin-guided-reader");
+  assert.equal(container.pinnedPane, "attachments");
+});
+
+test("keeps a pin the user changed during the grace period", async () => {
+  const container = {
+    tabType: "reader",
+    collapsed: false,
+    pinnedPane: "",
+    getEnabledPane: () => ({}),
+    scrollToPane: async () => {},
+  };
+
+  const focused = await focusGuidedReaderPane(
+    {
+      ZoteroContextPane: {
+        collapsed: true,
+        context: { mode: "notes" },
+        sidenav: { container },
+      },
+    },
+    "plugin-guided-reader",
+    {
+      attempts: 1,
+      delay: async (ms) => {
+        if (ms === PIN_RESTORE_DELAY_MS) container.pinnedPane = "notes";
+      },
+    },
+  );
+
+  assert.equal(focused, true);
+  assert.equal(container.pinnedPane, "notes");
 });
 
 test("expands a collapsed item-details before scrolling", async () => {
@@ -136,7 +200,7 @@ test("expands a collapsed item-details before scrolling", async () => {
   assert.deepEqual(calls, ["scroll:plugin-guided-reader"]);
 });
 
-test("keeps the target pane after a cold-start re-render", async () => {
+test("keeps the target pane across a cold-start re-render in the grace period", async () => {
   const container = {
     tabType: "reader",
     collapsed: false,
@@ -162,11 +226,15 @@ test("keeps the target pane after a cold-start re-render", async () => {
       },
     },
     "plugin-guided-reader",
-    { attempts: 1, delay: async () => {} },
+    {
+      attempts: 1,
+      delay: async (ms) => {
+        if (ms === PIN_RESTORE_DELAY_MS) container.render();
+      },
+    },
   );
 
   assert.equal(focused, true);
   assert.equal(container.currentPane, "plugin-guided-reader");
-  container.render();
-  assert.equal(container.currentPane, "plugin-guided-reader");
+  assert.equal(container.pinnedPane, "");
 });

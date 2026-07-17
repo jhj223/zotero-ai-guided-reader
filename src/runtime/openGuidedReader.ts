@@ -60,6 +60,8 @@ export async function openGuidedReaderForItem(
   return { attachment, paneFocused };
 }
 
+export const PIN_RESTORE_DELAY_MS = 1000;
+
 export async function focusGuidedReaderPane(
   win: GuidedReaderWindow,
   paneID: string,
@@ -83,11 +85,20 @@ export async function focusGuidedReaderPane(
     ) {
       // Zotero 9 cold-starts the reader item-details asynchronously, and a
       // later render discards a plain scrollToPane target. Pin the pane so
-      // every subsequent render re-applies it, expand item-details (a
+      // renders inside the grace window re-apply it, expand item-details (a
       // collapsed container makes scrollToPane return early), then scroll.
+      const previousPin = container.pinnedPane ?? "";
       container.pinnedPane = paneID;
       if (container.collapsed) container.collapsed = false;
       await container.scrollToPane(paneID, "instant");
+
+      // Hand the pin back after the cold-start window so the menu action
+      // leaves no lasting side effect, unless the user re-pinned meanwhile.
+      await options.delay(PIN_RESTORE_DELAY_MS);
+      const current = contextPane.sidenav?.container;
+      if (current && current.pinnedPane === paneID) {
+        current.pinnedPane = previousPin;
+      }
       return true;
     }
     await options.delay(50);
