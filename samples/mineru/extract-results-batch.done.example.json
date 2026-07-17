@@ -1,0 +1,18 @@
+{
+  "code": 0,
+  "msg": "ok",
+  "trace_id": "redacted",
+  "data": {
+    "batch_id": "redacted",
+    "extract_result": {
+      "file_name": "example.pdf",
+      "state": "done",
+      "full_zip_url": "https://example.invalid/redacted.zip",
+      "data_id": "ATTACHMENT_KEY",
+      "extract_progress": {
+        "extracted_pages": 2,
+        "total_pages": 2
+      }
+    }
+  }
+}

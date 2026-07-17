@@ -1,0 +1,11 @@
+pref("enable", true);
+pref("llmProvider", "deepseek");
+pref("llmApiKey", "");
+pref("llmModel", "");
+pref("llmBaseUrl", "");
+pref("mineruApiKey", "");
+pref("mineruModelVersion", "vlm");
+pref("mineruLanguage", "ch");
+pref("mineruEnableOcr", false);
+pref("mineruPollIntervalMs", 3000);
+pref("temporaryHighlight", true);

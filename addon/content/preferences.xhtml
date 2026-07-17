@@ -1,0 +1,130 @@
+<linkset>
+  <html:link rel="localization" href="__addonRef__-preferences.ftl" />
+</linkset>
+<groupbox
+  onload="Zotero.__addonInstance__.hooks.onPrefsEvent('load', { window })"
+>
+  <label><html:h2 data-l10n-id="pref-title"></html:h2></label>
+  <checkbox
+    id="zotero-prefpane-__addonRef__-enable"
+    preference="enable"
+    data-l10n-id="pref-enable"
+  />
+
+  <html:fieldset class="zg-pref-section">
+    <html:legend data-l10n-id="pref-llm-section"></html:legend>
+    <html:label
+      for="zotero-prefpane-__addonRef__-llmProvider"
+      data-l10n-id="pref-llm-provider"
+    ></html:label>
+    <html:select
+      id="zotero-prefpane-__addonRef__-llmProvider"
+      preference="llmProvider"
+    >
+      <html:option value="anthropic">Anthropic</html:option>
+      <html:option value="openai">OpenAI</html:option>
+      <html:option value="deepseek">DeepSeek</html:option>
+      <html:option value="qwen">Qwen</html:option>
+      <html:option value="volcengine">VolcEngine</html:option>
+      <html:option value="siliconflow">SiliconFlow</html:option>
+    </html:select>
+
+    <html:label
+      for="zotero-prefpane-__addonRef__-llmApiKey"
+      data-l10n-id="pref-llm-key"
+    ></html:label>
+    <html:input
+      type="password"
+      id="zotero-prefpane-__addonRef__-llmApiKey"
+      preference="llmApiKey"
+    ></html:input>
+
+    <html:label
+      for="zotero-prefpane-__addonRef__-llmModel"
+      data-l10n-id="pref-llm-model"
+    ></html:label>
+    <html:input
+      type="text"
+      id="zotero-prefpane-__addonRef__-llmModel"
+      preference="llmModel"
+      placeholder="optional"
+    ></html:input>
+
+    <html:label
+      for="zotero-prefpane-__addonRef__-llmBaseUrl"
+      data-l10n-id="pref-llm-base-url"
+    ></html:label>
+    <html:input
+      type="url"
+      id="zotero-prefpane-__addonRef__-llmBaseUrl"
+      preference="llmBaseUrl"
+      placeholder="optional"
+    ></html:input>
+
+    <html:button
+      type="button"
+      id="__addonRef__-validate-llm"
+      data-l10n-id="pref-validate-llm"
+    ></html:button>
+  </html:fieldset>
+
+  <html:fieldset class="zg-pref-section">
+    <html:legend data-l10n-id="pref-mineru-section"></html:legend>
+    <html:label
+      for="zotero-prefpane-__addonRef__-mineruApiKey"
+      data-l10n-id="pref-mineru-key"
+    ></html:label>
+    <html:input
+      type="password"
+      id="zotero-prefpane-__addonRef__-mineruApiKey"
+      preference="mineruApiKey"
+    ></html:input>
+
+    <html:label
+      for="zotero-prefpane-__addonRef__-mineruModelVersion"
+      data-l10n-id="pref-mineru-model"
+    ></html:label>
+    <html:select
+      id="zotero-prefpane-__addonRef__-mineruModelVersion"
+      preference="mineruModelVersion"
+    >
+      <html:option value="vlm">vlm</html:option>
+      <html:option value="pipeline">pipeline</html:option>
+    </html:select>
+
+    <html:label
+      for="zotero-prefpane-__addonRef__-mineruLanguage"
+      data-l10n-id="pref-mineru-language"
+    ></html:label>
+    <html:input
+      type="text"
+      id="zotero-prefpane-__addonRef__-mineruLanguage"
+      preference="mineruLanguage"
+    ></html:input>
+
+    <checkbox
+      id="zotero-prefpane-__addonRef__-mineruEnableOcr"
+      preference="mineruEnableOcr"
+      data-l10n-id="pref-mineru-ocr"
+    />
+
+    <html:button
+      type="button"
+      id="__addonRef__-validate-mineru"
+      data-l10n-id="pref-validate-mineru"
+    ></html:button>
+    <html:p class="zg-pref-help" data-l10n-id="pref-mineru-quota"></html:p>
+  </html:fieldset>
+
+  <checkbox
+    id="zotero-prefpane-__addonRef__-temporaryHighlight"
+    preference="temporaryHighlight"
+    data-l10n-id="pref-temporary-highlight"
+  />
+</groupbox>
+<vbox>
+  <html:label
+    data-l10n-id="pref-help"
+    data-l10n-args='{"time": "__buildTime__","name": "__addonName__","version":"__buildVersion__"}'
+  ></html:label>
+</vbox>

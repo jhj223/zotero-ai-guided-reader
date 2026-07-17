@@ -1,0 +1,66 @@
+{
+  "name": "zotero-ai-guided-reader",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Zotero 7 guided AI reading plugin with MinerU-grounded PDF anchors",
+  "config": {
+    "addonName": "Zotero AI Guided Reader",
+    "addonID": "zotero-ai-guided-reader@local",
+    "addonRef": "zoteroaiguidedreader",
+    "addonInstance": "ZoteroAIGuidedReader",
+    "prefsPrefix": "extensions.zotero.zoteroaiguidedreader"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/local/zotero-ai-guided-reader.git"
+  },
+  "author": "local",
+  "bugs": {
+    "url": "https://github.com/local/zotero-ai-guided-reader/issues"
+  },
+  "homepage": "https://github.com/local/zotero-ai-guided-reader#readme",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "start": "zotero-plugin serve",
+    "build": "zotero-plugin build && tsc --noEmit",
+    "lint:check": "prettier --check . && eslint .",
+    "lint:fix": "prettier --write . && eslint . --fix",
+    "release": "zotero-plugin release",
+    "test": "tsx --test \"test/**/*.test.ts\"",
+    "test:zotero": "zotero-plugin test",
+    "update-deps": "npm update --save"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "zotero-plugin-toolkit": "^5.1.4"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.2.8",
+    "@types/react-dom": "^19.2.3",
+    "@zotero-plugin/eslint-config": "^0.6.7",
+    "eslint": "^9.39.2",
+    "prettier": "^3.7.4",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "zotero-plugin-scaffold": "^0.8.2",
+    "zotero-types": "^4.1.0-beta.4"
+  },
+  "prettier": {
+    "printWidth": 80,
+    "tabWidth": 2,
+    "endOfLine": "lf",
+    "overrides": [
+      {
+        "files": [
+          "*.xhtml"
+        ],
+        "options": {
+          "htmlWhitespaceSensitivity": "css"
+        }
+      }
+    ]
+  }
+}
