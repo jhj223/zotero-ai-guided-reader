@@ -1,6 +1,6 @@
 # Zotero AI Guided Reader
 
-Zotero 7+ bootstrapped plugin for Chinese academic PDF guided reading. It uses
+Zotero 9 bootstrapped plugin for Chinese academic PDF guided reading. It uses
 the user's own MinerU API key to parse PDFs into structured, page-anchored
 chunks, then uses the user's own LLM API key to generate section-level outlines
 and on-demand close-reading notes. Generated anchor markers such as

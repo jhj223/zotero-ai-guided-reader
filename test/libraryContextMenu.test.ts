@@ -12,15 +12,16 @@ test("library context menu targets Zotero item rows and opens guided reading", a
   assert.match(source, /registerMenu/);
   assert.match(source, /target:\s*"main\/library\/item"/);
   assert.match(source, /openGuidedReaderForItem\(item\)/);
+  assert.doesNotMatch(source, /LegacyLibraryContextMenu/);
+  assert.doesNotMatch(source, /zotero-itemmenu/);
 });
 
 test("plugin hooks register and unregister the library context menu", async () => {
   const source = await readSource("../src/hooks.ts");
 
   assert.match(source, /registerLibraryContextMenu\(\)/);
-  assert.match(source, /registerLegacyLibraryContextMenu\(win\)/);
-  assert.match(source, /unregisterLegacyLibraryContextMenu\(win\)/);
   assert.match(source, /unregisterLibraryContextMenu\(\)/);
+  assert.doesNotMatch(source, /LegacyLibraryContextMenu/);
 });
 
 test("library context menu has Chinese and English Fluent labels", async () => {

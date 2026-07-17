@@ -1,10 +1,8 @@
 import React from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { chooseReaderPaneApi } from "../core/zoteroCompatibility";
+import { hasReaderSectionApi } from "../core/zoteroCompatibility";
 import { GuidedReaderApp } from "../ui/GuidedReaderApp";
 import { getLocaleID } from "../utils/locale";
-
-type RegistrationKind = "section" | "view";
 
 interface SectionHookProps {
   body: HTMLElement;
@@ -24,96 +22,59 @@ interface ReaderPaneManager {
     onDestroy(props: { body: HTMLElement }): void;
   }) => string | false;
   unregisterSection?: (id: string) => boolean;
-  registerView?: (options: {
-    id: string;
-    pluginID: string;
-    label: string;
-    mode: string[];
-    header: { l10nID: string; icon: string };
-    sidenav: { l10nID: string; icon: string };
-    onReady(props: { item?: Zotero.Item; target: HTMLElement }): void;
-    onDestroy(props: { target: HTMLElement }): void;
-  }) => string | false;
-  unregisterView?: (id: string) => boolean;
 }
 
 const roots = new WeakMap<Element, Root>();
 const PANE_LOCAL_ID = "guided-reader";
 let registeredPaneID: string | false | undefined;
-let registrationKind: RegistrationKind | undefined;
 
 export function registerReaderView(): void {
   if (registeredPaneID) return;
 
   const manager = Zotero.ItemPaneManager as unknown as ReaderPaneManager;
-  const api = chooseReaderPaneApi(manager);
-  const header = {
-    l10nID: getLocaleID("reader-view-head"),
-    icon: "chrome://zotero/skin/16/universal/book.svg",
-  };
-  const sidenav = {
-    l10nID: getLocaleID("reader-view-sidenav"),
-    icon: "chrome://zotero/skin/20/universal/book.svg",
-  };
-
-  if (api === "section" && manager.registerSection) {
-    registeredPaneID = manager.registerSection({
-      paneID: PANE_LOCAL_ID,
-      pluginID: addon.data.config.addonID,
-      header,
-      sidenav,
-      onItemChange: ({ tabType, setEnabled }) => {
-        setEnabled(tabType === "reader");
-      },
-      onRender: ({ body, item, tabType, setEnabled }) => {
-        const enabled = tabType === "reader";
-        setEnabled(enabled);
-        if (enabled) mount(body, item);
-        else unmount(body);
-      },
-      onDestroy: ({ body }) => unmount(body),
-    });
-    registrationKind = registeredPaneID ? "section" : undefined;
-    if (!registeredPaneID) {
-      ztoolkit.log("ItemPaneManager.registerSection rejected guided-reader");
-    }
+  const registerSection = hasReaderSectionApi(manager)
+    ? manager.registerSection
+    : undefined;
+  if (!registerSection) {
+    ztoolkit.log(
+      "ItemPaneManager.registerSection is unavailable; guided reader pane disabled",
+    );
     return;
   }
 
-  if (api === "view" && manager.registerView) {
-    registeredPaneID = manager.registerView({
-      id: PANE_LOCAL_ID,
-      pluginID: addon.data.config.addonID,
-      label: "AI Guided Reader",
-      mode: ["reader"],
-      header,
-      sidenav,
-      onReady: ({ item, target }) => mount(target, item),
-      onDestroy: ({ target }) => unmount(target),
-    });
-    registrationKind = registeredPaneID ? "view" : undefined;
-    if (!registeredPaneID) {
-      ztoolkit.log("ItemPaneManager.registerView rejected guided-reader");
-    }
-    return;
+  registeredPaneID = registerSection({
+    paneID: PANE_LOCAL_ID,
+    pluginID: addon.data.config.addonID,
+    header: {
+      l10nID: getLocaleID("reader-view-head"),
+      icon: "chrome://zotero/skin/16/universal/book.svg",
+    },
+    sidenav: {
+      l10nID: getLocaleID("reader-view-sidenav"),
+      icon: "chrome://zotero/skin/20/universal/book.svg",
+    },
+    onItemChange: ({ tabType, setEnabled }) => {
+      setEnabled(tabType === "reader");
+    },
+    onRender: ({ body, item, tabType, setEnabled }) => {
+      const enabled = tabType === "reader";
+      setEnabled(enabled);
+      if (enabled) mount(body, item);
+      else unmount(body);
+    },
+    onDestroy: ({ body }) => unmount(body),
+  });
+  if (!registeredPaneID) {
+    ztoolkit.log("ItemPaneManager.registerSection rejected guided-reader");
   }
-
-  ztoolkit.log(
-    "No supported ItemPaneManager section/view registration API is available",
-  );
 }
 
 export function unregisterReaderView(): void {
   const manager = Zotero.ItemPaneManager as unknown as ReaderPaneManager;
   if (typeof registeredPaneID === "string") {
-    if (registrationKind === "section") {
-      manager.unregisterSection?.(registeredPaneID);
-    } else if (registrationKind === "view") {
-      manager.unregisterView?.(registeredPaneID);
-    }
+    manager.unregisterSection?.(registeredPaneID);
   }
   registeredPaneID = undefined;
-  registrationKind = undefined;
 }
 
 export function getRegisteredReaderPaneID(): string | undefined {

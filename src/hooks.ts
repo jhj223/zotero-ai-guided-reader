@@ -3,9 +3,7 @@ import { registerPrefsScripts } from "./modules/preferenceScript";
 import { createZToolkit } from "./utils/ztoolkit";
 import { registerReaderView, unregisterReaderView } from "./runtime/readerView";
 import {
-  registerLegacyLibraryContextMenu,
   registerLibraryContextMenu,
-  unregisterLegacyLibraryContextMenu,
   unregisterLibraryContextMenu,
 } from "./runtime/libraryContextMenu";
 
@@ -33,11 +31,9 @@ async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {
   win.MozXULElement.insertFTLIfNeeded(
     `${addon.data.config.addonRef}-mainWindow.ftl`,
   );
-  registerLegacyLibraryContextMenu(win);
 }
 
-async function onMainWindowUnload(win: Window): Promise<void> {
-  unregisterLegacyLibraryContextMenu(win);
+async function onMainWindowUnload(_win: Window): Promise<void> {
   ztoolkit.unregisterAll();
 }
 

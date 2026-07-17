@@ -13,15 +13,7 @@ interface MenuManagerLike {
   unregisterMenu?: (menuID: string) => boolean;
 }
 
-interface LegacyRegistration {
-  popup: Element;
-  menuItem: XULElement;
-  onPopupShowing: EventListener;
-  onCommand: EventListener;
-}
-
 const MENU_ID = "zotero-ai-guided-reader-library-item";
-const legacyRegistrations = new WeakMap<Window, LegacyRegistration>();
 let registeredMenuID: string | false | undefined;
 
 export function registerLibraryContextMenu(): void {
@@ -29,7 +21,7 @@ export function registerLibraryContextMenu(): void {
   const manager = getMenuManager();
   if (!manager?.registerMenu) {
     ztoolkit.log(
-      "MenuManager.registerMenu unavailable; using window-level menu fallback",
+      "MenuManager.registerMenu is unavailable; AI guided reading menu disabled",
     );
     return;
   }
@@ -61,75 +53,11 @@ export function registerLibraryContextMenu(): void {
   }
 }
 
-export function registerLegacyLibraryContextMenu(
-  win: _ZoteroTypes.MainWindow,
-): void {
-  if (getMenuManager()?.registerMenu || legacyRegistrations.has(win)) return;
-
-  const popup = win.document.getElementById("zotero-itemmenu");
-  if (!popup) {
-    ztoolkit.log("Legacy item context popup #zotero-itemmenu was not found");
-    return;
-  }
-
-  const menuItem = win.document.createXULElement("menuitem") as XULElement;
-  menuItem.id = `${MENU_ID}-legacy`;
-  menuItem.classList.add("menuitem-iconic");
-  menuItem.style.setProperty(
-    "list-style-image",
-    `url(chrome://${addon.data.config.addonRef}/content/icons/favicon@0.5x.png)`,
-  );
-  menuItem.setAttribute(
-    "data-l10n-id",
-    getLocaleID("library-menu-ai-guided-reading"),
-  );
-
-  const getSelectedItems = () => win.ZoteroPane.getSelectedItems();
-  const update = () => {
-    const state = readState(getSelectedItems());
-    menuItem.toggleAttribute("hidden", !state.visible);
-    menuItem.toggleAttribute("disabled", !state.enabled);
-  };
-  const onPopupShowing: EventListener = (event) => {
-    if (event.target === popup) update();
-  };
-  const onCommand: EventListener = () => {
-    const state = readState(getSelectedItems());
-    if (state.enabled && state.item) void runMenuCommand(state.item);
-  };
-
-  popup.addEventListener("popupshowing", onPopupShowing);
-  menuItem.addEventListener("command", onCommand);
-  popup.appendChild(menuItem);
-  legacyRegistrations.set(win, {
-    popup,
-    menuItem,
-    onPopupShowing,
-    onCommand,
-  });
-}
-
-export function unregisterLegacyLibraryContextMenu(win: Window): void {
-  const registration = legacyRegistrations.get(win);
-  if (!registration) return;
-  registration.popup.removeEventListener(
-    "popupshowing",
-    registration.onPopupShowing,
-  );
-  registration.menuItem.removeEventListener("command", registration.onCommand);
-  registration.menuItem.remove();
-  legacyRegistrations.delete(win);
-}
-
 export function unregisterLibraryContextMenu(): void {
-  const manager = getMenuManager();
   if (typeof registeredMenuID === "string") {
-    manager?.unregisterMenu?.(registeredMenuID);
+    getMenuManager()?.unregisterMenu?.(registeredMenuID);
   }
   registeredMenuID = undefined;
-  for (const win of Zotero.getMainWindows()) {
-    unregisterLegacyLibraryContextMenu(win);
-  }
 }
 
 function getMenuManager(): MenuManagerLike | undefined {
