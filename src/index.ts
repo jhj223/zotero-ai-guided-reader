@@ -6,6 +6,10 @@ const basicTool = new BasicTool();
 
 // @ts-expect-error - Plugin instance is not typed
 if (!basicTool.getGlobal("Zotero")[config.addonInstance]) {
+  // The bootstrap sandbox lacks browser globals; react-dom reads the bare
+  // `window` global during render, so expose them like the plugin template.
+  defineGlobal("window");
+  defineGlobal("document");
   _globalThis.addon = new Addon();
   defineGlobal("ztoolkit", () => {
     return _globalThis.addon.data.ztoolkit;
