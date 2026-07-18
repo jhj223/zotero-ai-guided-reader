@@ -239,7 +239,7 @@ function AnchorButton({
       title={anchor ? `跳转到第 ${anchor.pageNumber} 页` : `未知锚点 ${id}`}
       onClick={async () => {
         if (!anchor) return;
-        openAnchor({ attachment: await attachmentPromise, anchor });
+        await openAnchor({ attachment: await attachmentPromise, anchor });
       }}
     >
       {anchor ? `p.${anchor.pageNumber}` : id}
