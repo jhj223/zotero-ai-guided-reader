@@ -35,8 +35,7 @@ const defaults: OpenDependencies = {
   getPaneID: getRegisteredReaderPaneID,
   getMainWindow: () =>
     Zotero.getMainWindow() as unknown as GuidedReaderWindow | undefined,
-  delay: (milliseconds) =>
-    new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  delay: (milliseconds) => Zotero.Promise.delay(milliseconds),
   attempts: 40,
 };
 
