@@ -5,6 +5,7 @@ import type {
   AnchorChunk,
   MinerUProgress,
   NormalizedMinerUOutput,
+  PageSize,
   ReadingOutline,
   ReadingOutlineSection,
 } from "../core/types";
@@ -136,16 +137,22 @@ export function GuidedReaderApp({ item }: { item: Zotero.Item }) {
               <li key={`${section.title}-${bullet.claim}`}>
                 {bullet.claim}
                 <span className="zg-anchor-list">
-                  {bullet.anchorIds.map((id) => (
-                    <AnchorButton
-                      attachmentPromise={service.getAttachment()}
-                      anchor={parsed?.anchors.find(
-                        (candidate) => candidate.id === id,
-                      )}
-                      id={id}
-                      key={id}
-                    />
-                  ))}
+                  {bullet.anchorIds.map((id) => {
+                    const anchor = parsed?.anchors.find(
+                      (candidate) => candidate.id === id,
+                    );
+                    return (
+                      <AnchorButton
+                        attachmentPromise={service.getAttachment()}
+                        anchor={anchor}
+                        pageSize={
+                          anchor && parsed?.pageSizes?.[anchor.pageIndex]
+                        }
+                        id={id}
+                        key={id}
+                      />
+                    );
+                  })}
                 </span>
               </li>
             ))}
@@ -154,6 +161,7 @@ export function GuidedReaderApp({ item }: { item: Zotero.Item }) {
             <GuideText
               text={expanded[section.title]}
               anchors={parsed?.anchors || []}
+              pageSizes={parsed?.pageSizes}
               attachmentPromise={service.getAttachment()}
             />
           )}
@@ -194,10 +202,12 @@ function Status({
 function GuideText({
   text,
   anchors,
+  pageSizes,
   attachmentPromise,
 }: {
   text: string;
   anchors: AnchorChunk[];
+  pageSizes?: Record<number, PageSize>;
   attachmentPromise: Promise<Zotero.Item>;
 }) {
   const anchorsById = new Map(anchors.map((anchor) => [anchor.id, anchor]));
@@ -208,10 +218,12 @@ function GuideText({
           {parseAnchorPlaceholders(paragraph).map((segment, index) => {
             if (segment.type === "text")
               return <span key={index}>{segment.text}</span>;
+            const anchor = anchorsById.get(segment.anchorId);
             return (
               <AnchorButton
                 attachmentPromise={attachmentPromise}
-                anchor={anchorsById.get(segment.anchorId)}
+                anchor={anchor}
+                pageSize={anchor && pageSizes?.[anchor.pageIndex]}
                 id={segment.anchorId}
                 key={`${segment.anchorId}-${index}`}
               />
@@ -226,10 +238,12 @@ function GuideText({
 function AnchorButton({
   id,
   anchor,
+  pageSize,
   attachmentPromise,
 }: {
   id: string;
   anchor?: AnchorChunk;
+  pageSize?: PageSize;
   attachmentPromise: Promise<Zotero.Item>;
 }) {
   return (
@@ -239,7 +253,11 @@ function AnchorButton({
       title={anchor ? `跳转到第 ${anchor.pageNumber} 页` : `未知锚点 ${id}`}
       onClick={async () => {
         if (!anchor) return;
-        await openAnchor({ attachment: await attachmentPromise, anchor });
+        await openAnchor({
+          attachment: await attachmentPromise,
+          anchor,
+          pageSize,
+        });
       }}
     >
       {anchor ? `p.${anchor.pageNumber}` : id}

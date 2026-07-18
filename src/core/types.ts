@@ -28,10 +28,16 @@ export interface AnchorChunk {
   sectionPath: string[];
 }
 
+export interface PageSize {
+  width: number;
+  height: number;
+}
+
 export interface NormalizedMinerUOutput {
   anchors: AnchorChunk[];
   markdown?: string;
   sourceFiles: string[];
+  pageSizes?: Record<number, PageSize>;
 }
 
 export interface MinerUProgress {

@@ -3,6 +3,7 @@ import type {
   AnchorType,
   BBox,
   NormalizedMinerUOutput,
+  PageSize,
 } from "./types";
 
 const MAX_FILE_BYTES = 200 * 1024 * 1024;
@@ -50,6 +51,7 @@ export function normalizeMinerUOutput(
   return {
     anchors,
     markdown: raw.markdown,
+    pageSizes: extractPageSizes(raw.middleJson),
     sourceFiles: [
       raw.contentListV2 ? "content_list_v2.json" : "",
       raw.contentList ? "content_list.json" : "",
@@ -145,6 +147,24 @@ function normalizeMiddleJson(input: unknown): AnchorChunk[] | undefined {
   }
 
   return state.anchors;
+}
+
+function extractPageSizes(
+  input: unknown,
+): Record<number, PageSize> | undefined {
+  if (!isRecord(input) || !Array.isArray(input.pdf_info)) return undefined;
+  const sizes: Record<number, PageSize> = {};
+
+  for (const page of input.pdf_info) {
+    if (!isRecord(page)) continue;
+    const size = page.page_size;
+    if (!Array.isArray(size) || size.length !== 2) continue;
+    const [width, height] = size.map(Number);
+    if (!(width > 0) || !(height > 0)) continue;
+    sizes[toPageIndex(page.page_idx)] = { width, height };
+  }
+
+  return Object.keys(sizes).length ? sizes : undefined;
 }
 
 function createChunkState() {

@@ -5,7 +5,7 @@ import type {
   ReadingOutline,
   ReadingOutlineSection,
 } from "../core/types";
-import { PluginCache } from "./cache";
+import { CACHE_VERSION, PluginCache } from "./cache";
 import { exportAnkiTsv } from "./ankiExport";
 import { LLMClient } from "./llmClient";
 import { MinerUClient } from "./mineruClient";
@@ -38,7 +38,7 @@ export class GuidedReadingService {
     const attachment = await this.getAttachment();
     if (!force) {
       const cached = await this.cache.readParse(attachment.key);
-      if (cached?.parsed?.anchors?.length) {
+      if (cached?.version === CACHE_VERSION && cached.parsed?.anchors?.length) {
         this.parsed = cached.parsed;
         return cached.parsed;
       }

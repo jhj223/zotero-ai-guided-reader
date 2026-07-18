@@ -1,6 +1,7 @@
 import type { NormalizedMinerUOutput, ReadingOutline } from "../core/types";
 
-const CACHE_VERSION = 1;
+// v2: parse caches carry pageSizes for the anchor flash highlight.
+export const CACHE_VERSION = 2;
 
 export interface CachedParse {
   version: number;

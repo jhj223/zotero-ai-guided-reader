@@ -117,3 +117,35 @@ test("validateMinerUInputLimits reports documented size and page limits", () => 
     ],
   );
 });
+
+test("normalizeMinerUOutput keeps per-page sizes from middle.json", () => {
+  const normalized = normalizeMinerUOutput({
+    contentListV2: [
+      [
+        {
+          type: "paragraph",
+          content: { paragraph_content: "Hello" },
+          bbox: [1, 2, 3, 4],
+        },
+      ],
+    ],
+    middleJson: {
+      pdf_info: [
+        { page_idx: 0, page_size: [612, 792], para_blocks: [] },
+        { page_idx: 1, page_size: [612, 792.5], para_blocks: [] },
+      ],
+    },
+  });
+
+  assert.deepEqual(normalized.pageSizes, {
+    0: { width: 612, height: 792 },
+    1: { width: 612, height: 792.5 },
+  });
+});
+
+test("normalizeMinerUOutput omits pageSizes without middle.json", () => {
+  const normalized = normalizeMinerUOutput({
+    contentList: [{ type: "text", text: "Hi", page_idx: 0 }],
+  });
+  assert.equal(normalized.pageSizes, undefined);
+});
