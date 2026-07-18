@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { parseAnchorPlaceholders } from "../core/anchorMarkup";
+import { describeMinerUProgress } from "../core/progressText";
 import type {
   AnchorChunk,
   MinerUProgress,
@@ -180,10 +181,7 @@ function Status({
   parsed?: NormalizedMinerUOutput;
   busy: boolean;
 }) {
-  const progressText =
-    progress.totalPages && progress.extractedPages != null
-      ? `${progress.extractedPages}/${progress.totalPages} 页`
-      : progress.message || progress.state;
+  const progressText = describeMinerUProgress(progress, Boolean(parsed));
   return (
     <div className="zg-status">
       <span className={busy ? "zg-dot busy" : "zg-dot"} />
