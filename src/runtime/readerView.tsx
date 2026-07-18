@@ -32,17 +32,14 @@ export function registerReaderView(): void {
   if (registeredPaneID) return;
 
   const manager = Zotero.ItemPaneManager as unknown as ReaderPaneManager;
-  const registerSection = hasReaderSectionApi(manager)
-    ? manager.registerSection
-    : undefined;
-  if (!registerSection) {
+  if (!hasReaderSectionApi(manager) || !manager.registerSection) {
     ztoolkit.log(
       "ItemPaneManager.registerSection is unavailable; guided reader pane disabled",
     );
     return;
   }
 
-  registeredPaneID = registerSection({
+  registeredPaneID = manager.registerSection({
     paneID: PANE_LOCAL_ID,
     pluginID: addon.data.config.addonID,
     header: {

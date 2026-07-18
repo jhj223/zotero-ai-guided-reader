@@ -22,6 +22,10 @@ test("reader view registers only through the section API", async () => {
   );
 
   assert.match(source, /hasReaderSectionApi\(manager\)/);
+  // Must be invoked as a method: a detached `registerSection(...)` call loses
+  // the `this` binding and throws "this._sectionManager is undefined" inside
+  // Zotero's ItemPaneManager at startup.
+  assert.match(source, /registeredPaneID = manager\.registerSection\(/);
   assert.match(source, /manager\.unregisterSection/);
   assert.doesNotMatch(source, /registerView/i);
 });
