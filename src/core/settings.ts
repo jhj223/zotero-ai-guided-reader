@@ -36,6 +36,16 @@ export const LLM_PROVIDERS: Record<
   },
 };
 
+export function getProviderHints(provider: unknown): {
+  model: string;
+  baseUrl: string;
+} {
+  const id = String(provider || "");
+  const info =
+    id in LLM_PROVIDERS ? LLM_PROVIDERS[id as LLMProviderId] : undefined;
+  return { model: info?.defaultModel || "", baseUrl: info?.baseUrl || "" };
+}
+
 export function maskSecret(value: string): string {
   if (!value) return "";
   if (value.length < 8) return "*".repeat(value.length);

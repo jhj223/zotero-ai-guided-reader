@@ -1,4 +1,5 @@
 import { config } from "../../package.json";
+import { getProviderHints } from "../core/settings";
 import { readProviderSettings } from "../runtime/preferences";
 import { validateLlmKey, validateMinerUKey } from "../runtime/keyValidation";
 
@@ -10,6 +11,31 @@ export async function registerPrefsScripts(_window: Window) {
 function bindPrefEvents(win: Window) {
   bindValidateButton(win, "llm");
   bindValidateButton(win, "mineru");
+  bindProviderHints(win);
+}
+
+function bindProviderHints(win: Window) {
+  const select = win.document.querySelector<HTMLSelectElement>(
+    `#zotero-prefpane-${config.addonRef}-llmProvider`,
+  );
+  const apply = () => {
+    const hints = getProviderHints(select?.value);
+    setPlaceholder(win, "llmModel", hints.model ? `留空 = ${hints.model}` : "");
+    setPlaceholder(
+      win,
+      "llmBaseUrl",
+      hints.baseUrl ? `留空 = ${hints.baseUrl}` : "",
+    );
+  };
+  select?.addEventListener("change", apply);
+  apply();
+}
+
+function setPlaceholder(win: Window, idSuffix: string, text: string) {
+  const input = win.document.querySelector<HTMLInputElement>(
+    `#zotero-prefpane-${config.addonRef}-${idSuffix}`,
+  );
+  if (input) input.placeholder = text;
 }
 
 function bindValidateButton(win: Window, kind: "llm" | "mineru") {
