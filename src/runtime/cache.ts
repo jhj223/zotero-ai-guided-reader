@@ -1,7 +1,14 @@
-import type { NormalizedMinerUOutput, ReadingOutline } from "../core/types";
+import type {
+  NormalizedMinerUOutput,
+  ReadingOutline,
+  SectionGuide,
+} from "../core/types";
 
 // v2: parse caches carry pageSizes for the anchor flash highlight.
 export const CACHE_VERSION = 2;
+
+// v2: every visible guide claim carries a locally verified verbatim quote.
+export const GUIDE_CACHE_VERSION = 2;
 
 export interface CachedParse {
   version: number;
@@ -16,7 +23,9 @@ export interface CachedGuide {
   attachmentKey: string;
   createdAt: string;
   outline?: ReadingOutline;
+  // Kept for reading v1 caches; new section guides use validated JSON below.
   sections: Record<string, string>;
+  structuredSections?: Record<string, SectionGuide>;
 }
 
 export class PluginCache {

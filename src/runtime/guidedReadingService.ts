@@ -4,8 +4,10 @@ import type {
   NormalizedMinerUOutput,
   ReadingOutline,
   ReadingOutlineSection,
+  SectionGuide,
 } from "../core/types";
-import { CACHE_VERSION, PluginCache } from "./cache";
+import { normalizeSectionGuide } from "../core/llmResponses";
+import { CACHE_VERSION, GUIDE_CACHE_VERSION, PluginCache } from "./cache";
 import { exportAnkiTsv } from "./ankiExport";
 import { LLMClient } from "./llmClient";
 import { MinerUClient } from "./mineruClient";
@@ -59,7 +61,9 @@ export class GuidedReadingService {
   async generateOutline(force = false): Promise<ReadingOutline> {
     const attachment = await this.getAttachment();
     const cached = await this.cache.readGuide(attachment.key);
-    if (!force && cached?.outline) return cached.outline;
+    const currentCache =
+      cached?.version === GUIDE_CACHE_VERSION ? cached : undefined;
+    if (!force && currentCache?.outline) return currentCache.outline;
 
     const parsed = await this.ensureParsed();
     const outline = await new LLMClient(readProviderSettings()).generateOutline(
@@ -70,21 +74,40 @@ export class GuidedReadingService {
       },
     );
     await this.cache.writeGuide({
-      version: 1,
+      version: GUIDE_CACHE_VERSION,
       attachmentKey: attachment.key,
       createdAt: new Date().toISOString(),
       outline,
-      sections: cached?.sections || {},
+      sections: currentCache?.sections || {},
+      structuredSections: currentCache?.structuredSections || {},
     });
     return outline;
   }
 
-  async generateSectionGuide(section: ReadingOutlineSection): Promise<string> {
+  async generateSectionGuide(
+    section: ReadingOutlineSection,
+  ): Promise<SectionGuide> {
     const attachment = await this.getAttachment();
     const parsed = await this.ensureParsed();
     const cacheKey = section.title;
     const cached = await this.cache.readGuide(attachment.key);
-    if (cached?.sections[cacheKey]) return cached.sections[cacheKey];
+    const currentCache =
+      cached?.version === GUIDE_CACHE_VERSION ? cached : undefined;
+    if (currentCache?.structuredSections?.[cacheKey]) {
+      try {
+        return normalizeSectionGuide(
+          currentCache.structuredSections[cacheKey],
+          parsed.anchors,
+          section.title,
+        );
+      } catch (error) {
+        ztoolkit.log(
+          "Ignoring invalid structured guide cache",
+          attachment.key,
+          String(error),
+        );
+      }
+    }
 
     const guide = await new LLMClient(
       readProviderSettings(),
@@ -94,11 +117,15 @@ export class GuidedReadingService {
       anchors: parsed.anchors,
     });
     await this.cache.writeGuide({
-      version: 1,
+      version: GUIDE_CACHE_VERSION,
       attachmentKey: attachment.key,
       createdAt: new Date().toISOString(),
-      outline: cached?.outline,
-      sections: { ...(cached?.sections || {}), [cacheKey]: guide },
+      outline: currentCache?.outline,
+      sections: currentCache?.sections || {},
+      structuredSections: {
+        ...(currentCache?.structuredSections || {}),
+        [cacheKey]: guide,
+      },
     });
     return guide;
   }

@@ -62,9 +62,15 @@ export interface ProviderSettings {
   baseUrl?: string;
 }
 
+export interface EvidenceReference {
+  anchorId: string;
+  quote: string;
+}
+
 export interface OutlineBullet {
   claim: string;
   anchorIds: string[];
+  evidence: EvidenceReference[];
 }
 
 export interface ReadingOutlineSection {
@@ -76,6 +82,23 @@ export interface ReadingOutlineSection {
 export interface ReadingOutline {
   title: string;
   sections: ReadingOutlineSection[];
+}
+
+export type SectionGuideCategory =
+  | "fact"
+  | "mechanism"
+  | "judgment"
+  | "caution";
+
+export interface SectionGuidePoint {
+  category: SectionGuideCategory;
+  text: string;
+  evidence: EvidenceReference[];
+}
+
+export interface SectionGuide {
+  title: string;
+  points: SectionGuidePoint[];
 }
 
 export interface AnnotationContext {

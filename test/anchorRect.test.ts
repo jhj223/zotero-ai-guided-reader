@@ -19,6 +19,17 @@ test("scales a 0-1000 normalized bbox onto the page before flipping", () => {
   );
 });
 
+test("scales a small normalized bbox when its coordinate space is known", () => {
+  assert.deepEqual(
+    anchorToPdfRect(
+      [50, 100, 400, 200],
+      { width: 600, height: 800 },
+      "normalized-1000",
+    ),
+    [30, 640, 240, 720],
+  );
+});
+
 test("normalizes swapped corners into an ordered rect", () => {
   assert.deepEqual(
     anchorToPdfRect([500, 120, 62, 100], { width: 612, height: 792 }),
