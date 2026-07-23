@@ -14,6 +14,10 @@ test("sidebar uses whole claims for navigation without page chips", async () => 
   assert.match(source, /<EvidenceLinkedClaim/);
   assert.match(source, /查看 \{locations\.length\} 处原文/);
   assert.match(source, /shortenEvidenceQuote/);
+  assert.match(
+    source,
+    /shortenEvidenceQuote\(stripLatexToText\(reference\.quote\)\)/,
+  );
   assert.match(source, /semanticQuery=/);
   assert.doesNotMatch(source, /<ol className="zg-evidence-locations">/);
   assert.match(source, /role="list" className="zg-evidence-locations"/);

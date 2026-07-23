@@ -1,7 +1,7 @@
 import katex from "katex";
 import React, { useEffect, useMemo, useState } from "react";
 import { sectionGuideToMarkdown } from "../core/llmResponses";
-import { splitMathText } from "../core/mathText";
+import { splitMathText, stripLatexToText } from "../core/mathText";
 import { describeMinerUProgress } from "../core/progressText";
 import { tableHtmlToRows } from "../core/tableHtml";
 import type {
@@ -317,7 +317,7 @@ function EvidenceLinkedClaim({
                 第 {anchor.pageNumber} 页
               </span>
               <span className="zg-evidence-quote">
-                {shortenEvidenceQuote(reference.quote)}
+                {shortenEvidenceQuote(stripLatexToText(reference.quote))}
               </span>
             </AnchorButton>
           </div>
