@@ -11,12 +11,20 @@ declare namespace _ZoteroTypes {
       "llmProvider": string;
       "llmApiKey": string;
       "llmModel": string;
+      "llmCustomModel": string;
+      "llmFetchedModels": string;
       "llmBaseUrl": string;
       "mineruApiKey": string;
       "mineruModelVersion": string;
       "mineruLanguage": string;
-      "mineruEnableOcr": boolean;
+      "mineruOcrMode": string;
       "mineruPollIntervalMs": number;
+      "semanticProvider": string;
+      "semanticApiKey": string;
+      "semanticModel": string;
+      "semanticCustomModel": string;
+      "semanticFetchedModels": string;
+      "semanticBaseUrl": string;
       "temporaryHighlight": boolean;
     };
   }

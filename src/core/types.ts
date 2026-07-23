@@ -4,7 +4,9 @@ export type LLMProviderId =
   | "deepseek"
   | "qwen"
   | "volcengine"
-  | "siliconflow";
+  | "siliconflow"
+  | "codex-cli"
+  | "claude-cli";
 
 export type AnchorType =
   | "heading"
@@ -17,6 +19,15 @@ export type AnchorType =
   | "unknown";
 
 export type BBox = [number, number, number, number];
+export type BBoxSpace = "normalized-1000" | "page-points";
+
+export interface AnchorRichContent {
+  latex?: string;
+  tableHtml?: string;
+  caption?: string;
+  description?: string;
+  assetName?: string;
+}
 
 export interface AnchorChunk {
   id: string;
@@ -24,8 +35,10 @@ export interface AnchorChunk {
   pageIndex: number;
   pageNumber: number;
   bbox?: BBox;
+  bboxSpace?: BBoxSpace;
   text: string;
   sectionPath: string[];
+  richContent?: AnchorRichContent;
 }
 
 export interface PageSize {

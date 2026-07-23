@@ -95,6 +95,17 @@ test("llm: empty key fails locally without any request", async () => {
   assert.equal(calls.length, 0);
 });
 
+test("llm: local CLI validation does not require or transmit an API key", async () => {
+  const calls: FetchCall[] = [];
+  const result = await validateLlmKey(
+    llmSettings({ llmProvider: "codex-cli", llmApiKey: "" }),
+    fakeFetch([{ status: 500 }], calls),
+    async (provider) => ({ ok: true, message: `${provider} ready` }),
+  );
+  assert.deepEqual(result, { ok: true, message: "codex-cli ready" });
+  assert.equal(calls.length, 0);
+});
+
 test("llm: openai-compatible provider validates via GET /models", async () => {
   const calls: FetchCall[] = [];
   const result = await validateLlmKey(
@@ -156,8 +167,16 @@ test("preferences use live validation with Chinese toasts, not alert()", async (
     new URL("../src/modules/preferenceScript.ts", import.meta.url),
     "utf8",
   );
+  const markup = await readFile(
+    new URL("../addon/content/preferences.xhtml", import.meta.url),
+    "utf8",
+  );
 
   assert.match(source, /validateMinerUKey|validateLlmKey/);
+  assert.match(source, /fetchLlmModels/);
+  assert.match(source, /llmFetchedModels/);
+  assert.match(markup, /id="__addonRef__-fetch-models"/);
+  assert.match(markup, /data-l10n-id="pref-fetch-models"/);
   assert.match(source, /ProgressWindow/);
   assert.doesNotMatch(source, /Local validation passed/);
   assert.doesNotMatch(source, /win\.alert/);

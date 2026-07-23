@@ -4,8 +4,8 @@ import type {
   SectionGuide,
 } from "../core/types";
 
-// v2: parse caches carry pageSizes for the anchor flash highlight.
-export const CACHE_VERSION = 2;
+// v3: anchors retain coordinate-space metadata and MinerU rich content.
+export const CACHE_VERSION = 3;
 
 // v2: every visible guide claim carries a locally verified verbatim quote.
 export const GUIDE_CACHE_VERSION = 2;
@@ -26,6 +26,16 @@ export interface CachedGuide {
   // Kept for reading v1 caches; new section guides use validated JSON below.
   sections: Record<string, string>;
   structuredSections?: Record<string, SectionGuide>;
+}
+
+export function isUsableParseCache(
+  value: CachedParse | undefined,
+): value is CachedParse {
+  return Boolean(
+    value &&
+    (value.version === 2 || value.version === CACHE_VERSION) &&
+    value.parsed?.anchors?.length,
+  );
 }
 
 export class PluginCache {
@@ -62,6 +72,23 @@ export class PluginCache {
     return path;
   }
 
+  async writeAsset(
+    attachmentKey: string,
+    assetName: string,
+    bytes: Uint8Array,
+  ): Promise<void> {
+    const path = await this.assetPath(attachmentKey, assetName, true);
+    await IOUtils.write(path, bytes, { tmpPath: `${path}.tmp` });
+  }
+
+  async readAsset(
+    attachmentKey: string,
+    assetName: string,
+  ): Promise<Uint8Array | undefined> {
+    const path = await this.assetPath(attachmentKey, assetName, false);
+    return (await IOUtils.exists(path)) ? IOUtils.read(path) : undefined;
+  }
+
   private async readJson<T>(path: string): Promise<T | undefined> {
     if (!(await IOUtils.exists(path))) return undefined;
     const value = (await IOUtils.readJSON(path)) as T;
@@ -80,6 +107,24 @@ export class PluginCache {
 
   private guidePath(attachmentKey: string): string {
     return PathUtils.join(this.rootDir(), `${attachmentKey}.guide.json`);
+  }
+
+  private async assetPath(
+    attachmentKey: string,
+    assetName: string,
+    createDir: boolean,
+  ): Promise<string> {
+    if (!/^[A-Z0-9]{1,32}$/i.test(attachmentKey)) {
+      throw new Error("Invalid Zotero attachment key for asset cache.");
+    }
+    if (!/^[A-Za-z0-9._-]{1,180}$/.test(assetName)) {
+      throw new Error("Invalid MinerU asset name.");
+    }
+    const dir = PathUtils.join(this.rootDir(), "assets", attachmentKey);
+    if (createDir) {
+      await IOUtils.makeDirectory(dir, { ignoreExisting: true });
+    }
+    return PathUtils.join(dir, assetName);
   }
 
   private async ensureDir(child?: string): Promise<string> {

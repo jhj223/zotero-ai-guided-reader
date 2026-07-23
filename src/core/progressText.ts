@@ -4,18 +4,16 @@ export function describeMinerUProgress(
   progress: MinerUProgress,
   hasParsed: boolean,
 ): string {
-  if (hasParsed && progress.state !== "failed") {
-    return "解析完成";
-  }
+  if (hasParsed && progress.state !== "failed") return "解析完成";
   switch (progress.state) {
     case "idle":
       return "尚未解析";
     case "pending":
-      return "正在创建解析任务…";
+      return "排队中…";
     case "waiting-file":
       return "正在上传 PDF…";
     case "converting":
-      return "转换中…";
+      return "正在转换…";
     case "running":
       return progress.totalPages && progress.extractedPages != null
         ? `解析中 ${progress.extractedPages}/${progress.totalPages} 页`

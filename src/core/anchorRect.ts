@@ -1,7 +1,7 @@
 import type { BBox, PageSize } from "./types";
 
 export type PdfRect = [number, number, number, number];
-export type BBoxCoordinateSpace = "auto" | "normalized-1000";
+export type BBoxCoordinateSpace = "auto" | "normalized-1000" | "page-points";
 
 /**
  * Convert a MinerU bbox (origin top-left) into a Zotero reader rect
@@ -21,8 +21,9 @@ export function anchorToPdfRect(
   const [x0, y0, x1, y1] = bbox.map(Number);
   const normalized =
     coordinateSpace === "normalized-1000" ||
-    Math.max(x0, x1) > pageSize.width * 1.01 ||
-    Math.max(y0, y1) > pageSize.height * 1.01;
+    (coordinateSpace === "auto" &&
+      (Math.max(x0, x1) > pageSize.width * 1.01 ||
+        Math.max(y0, y1) > pageSize.height * 1.01));
   const sx = normalized ? pageSize.width / 1000 : 1;
   const sy = normalized ? pageSize.height / 1000 : 1;
   const left = Math.min(x0, x1) * sx;

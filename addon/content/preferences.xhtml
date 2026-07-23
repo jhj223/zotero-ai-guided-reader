@@ -1,6 +1,11 @@
 <linkset>
   <html:link rel="localization" href="__addonRef__-preferences.ftl" />
 </linkset>
+<html:style>
+  .zg-model-row { display: flex; align-items: center; gap: 6px; } .zg-model-row
+  select { flex: 1 1 auto; min-width: 0; } .zg-model-row button { flex: 0 0
+  auto; }
+</html:style>
 <groupbox
   onload="Zotero.__addonInstance__.hooks.onPrefsEvent('load', { window })"
 >
@@ -27,13 +32,17 @@
       <html:option value="qwen">Qwen</html:option>
       <html:option value="volcengine">VolcEngine</html:option>
       <html:option value="siliconflow">SiliconFlow</html:option>
+      <html:option value="codex-cli">Codex CLI（本机登录）</html:option>
+      <html:option value="claude-cli">Claude Code CLI（本机登录）</html:option>
     </html:select>
 
     <html:label
+      class="zg-api-only"
       for="zotero-prefpane-__addonRef__-llmApiKey"
       data-l10n-id="pref-llm-key"
     ></html:label>
     <html:input
+      class="zg-api-only"
       type="password"
       id="zotero-prefpane-__addonRef__-llmApiKey"
       preference="llmApiKey"
@@ -43,18 +52,38 @@
       for="zotero-prefpane-__addonRef__-llmModel"
       data-l10n-id="pref-llm-model"
     ></html:label>
+    <html:div class="zg-model-row">
+      <html:select
+        id="zotero-prefpane-__addonRef__-llmModel"
+        preference="llmModel"
+      ></html:select>
+      <html:button
+        class="zg-api-only"
+        type="button"
+        id="__addonRef__-fetch-models"
+        data-l10n-id="pref-fetch-models"
+      ></html:button>
+    </html:div>
+
+    <html:label
+      class="zg-custom-model"
+      for="zotero-prefpane-__addonRef__-llmCustomModel"
+      data-l10n-id="pref-llm-custom-model"
+    ></html:label>
     <html:input
+      class="zg-custom-model"
       type="text"
-      id="zotero-prefpane-__addonRef__-llmModel"
-      preference="llmModel"
-      placeholder="optional"
+      id="zotero-prefpane-__addonRef__-llmCustomModel"
+      preference="llmCustomModel"
     ></html:input>
 
     <html:label
+      class="zg-api-only"
       for="zotero-prefpane-__addonRef__-llmBaseUrl"
       data-l10n-id="pref-llm-base-url"
     ></html:label>
     <html:input
+      class="zg-api-only"
       type="url"
       id="zotero-prefpane-__addonRef__-llmBaseUrl"
       preference="llmBaseUrl"
@@ -66,6 +95,10 @@
       id="__addonRef__-validate-llm"
       data-l10n-id="pref-validate-llm"
     ></html:button>
+    <html:p
+      class="zg-cli-only zg-pref-help"
+      data-l10n-id="pref-cli-help"
+    ></html:p>
   </html:fieldset>
 
   <html:fieldset class="zg-pref-section">
@@ -88,7 +121,14 @@
       id="zotero-prefpane-__addonRef__-mineruModelVersion"
       preference="mineruModelVersion"
     >
-      <html:option value="vlm">vlm</html:option>
+      <html:option
+        value="vlm"
+        data-l10n-id="pref-mineru-model-vlm"
+      ></html:option>
+      <html:option
+        value="auto"
+        data-l10n-id="pref-mineru-model-auto"
+      ></html:option>
       <html:option value="pipeline">pipeline</html:option>
     </html:select>
 
@@ -102,11 +142,23 @@
       preference="mineruLanguage"
     ></html:input>
 
-    <checkbox
-      id="zotero-prefpane-__addonRef__-mineruEnableOcr"
-      preference="mineruEnableOcr"
+    <html:label
+      for="zotero-prefpane-__addonRef__-mineruOcrMode"
       data-l10n-id="pref-mineru-ocr"
-    />
+    ></html:label>
+    <html:select
+      id="zotero-prefpane-__addonRef__-mineruOcrMode"
+      preference="mineruOcrMode"
+    >
+      <html:option
+        value="never"
+        data-l10n-id="pref-mineru-ocr-never"
+      ></html:option>
+      <html:option
+        value="always"
+        data-l10n-id="pref-mineru-ocr-always"
+      ></html:option>
+    </html:select>
 
     <html:button
       type="button"
@@ -114,6 +166,92 @@
       data-l10n-id="pref-validate-mineru"
     ></html:button>
     <html:p class="zg-pref-help" data-l10n-id="pref-mineru-quota"></html:p>
+  </html:fieldset>
+
+  <html:fieldset class="zg-pref-section">
+    <html:legend data-l10n-id="pref-semantic-section"></html:legend>
+    <html:label
+      for="zotero-prefpane-__addonRef__-semanticProvider"
+      data-l10n-id="pref-semantic-provider"
+    ></html:label>
+    <html:select
+      id="zotero-prefpane-__addonRef__-semanticProvider"
+      preference="semanticProvider"
+    >
+      <html:option value="none">关闭</html:option>
+      <html:option value="voyage">Voyage AI</html:option>
+      <html:option value="openai">OpenAI</html:option>
+      <html:option value="qwen">Qwen / DashScope</html:option>
+      <html:option value="siliconflow">SiliconFlow</html:option>
+      <html:option value="volcengine">VolcEngine</html:option>
+      <html:option value="jina">Jina AI</html:option>
+      <html:option value="cohere">Cohere</html:option>
+      <html:option value="ollama">Ollama（本机）</html:option>
+      <html:option value="openai-compatible"
+        >自定义 OpenAI 兼容接口</html:option
+      >
+    </html:select>
+
+    <html:label
+      class="zg-semantic-enabled zg-semantic-key"
+      for="zotero-prefpane-__addonRef__-semanticApiKey"
+      data-l10n-id="pref-semantic-key"
+    ></html:label>
+    <html:input
+      class="zg-semantic-enabled zg-semantic-key"
+      type="password"
+      id="zotero-prefpane-__addonRef__-semanticApiKey"
+      preference="semanticApiKey"
+    ></html:input>
+
+    <html:label
+      class="zg-semantic-enabled"
+      for="zotero-prefpane-__addonRef__-semanticModel"
+      data-l10n-id="pref-semantic-model"
+    ></html:label>
+    <html:div class="zg-model-row zg-semantic-enabled">
+      <html:select
+        id="zotero-prefpane-__addonRef__-semanticModel"
+        preference="semanticModel"
+      ></html:select>
+      <html:button
+        type="button"
+        id="__addonRef__-fetch-semantic-models"
+        data-l10n-id="pref-fetch-models"
+      ></html:button>
+    </html:div>
+
+    <html:label
+      class="zg-semantic-enabled zg-semantic-custom-model"
+      for="zotero-prefpane-__addonRef__-semanticCustomModel"
+      data-l10n-id="pref-llm-custom-model"
+    ></html:label>
+    <html:input
+      class="zg-semantic-enabled zg-semantic-custom-model"
+      type="text"
+      id="zotero-prefpane-__addonRef__-semanticCustomModel"
+      preference="semanticCustomModel"
+    ></html:input>
+
+    <html:label
+      class="zg-semantic-enabled"
+      for="zotero-prefpane-__addonRef__-semanticBaseUrl"
+      data-l10n-id="pref-semantic-base-url"
+    ></html:label>
+    <html:input
+      class="zg-semantic-enabled"
+      type="url"
+      id="zotero-prefpane-__addonRef__-semanticBaseUrl"
+      preference="semanticBaseUrl"
+    ></html:input>
+
+    <html:button
+      class="zg-semantic-enabled"
+      type="button"
+      id="__addonRef__-validate-semantic"
+      data-l10n-id="pref-validate-semantic"
+    ></html:button>
+    <html:p class="zg-pref-help" data-l10n-id="pref-semantic-help"></html:p>
   </html:fieldset>
 
   <checkbox

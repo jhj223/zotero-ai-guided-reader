@@ -102,6 +102,10 @@ test("normalizeSectionGuide keeps only unique points with verified evidence", ()
               quote: "reacted at 180 C for three hours",
             },
             {
+              anchorId: "chunk_0002",
+              quote: "remained stable in 7000 mg/L NaCl",
+            },
+            {
               anchorId: "chunk_0001",
               quote: "reacted at 180 C for three hours",
             },
@@ -140,6 +144,10 @@ test("normalizeSectionGuide keeps only unique points with verified evidence", ()
           {
             anchorId: "chunk_0001",
             quote: "reacted at 180 C for three hours",
+          },
+          {
+            anchorId: "chunk_0002",
+            quote: "remained stable in 7000 mg/L NaCl",
           },
         ],
       },

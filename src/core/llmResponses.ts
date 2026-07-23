@@ -25,7 +25,6 @@ export function extractJsonObject<T>(text: string): T {
   const trimmed = text.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   const candidate = fenced?.[1] ?? trimmed;
-
   try {
     return JSON.parse(candidate) as T;
   } catch {
@@ -34,7 +33,7 @@ export function extractJsonObject<T>(text: string): T {
     if (start >= 0 && end > start) {
       return JSON.parse(candidate.slice(start, end + 1)) as T;
     }
-    throw new Error("LLM response did not contain a valid JSON object.");
+    throw new Error("LLM 响应中没有有效 JSON 对象。");
   }
 }
 
@@ -44,7 +43,6 @@ export function filterOutlineToKnownAnchors(
 ): ReadingOutline {
   const anchorById = new Map(anchors.map((anchor) => [anchor.id, anchor]));
   const rawSections = Array.isArray(outline.sections) ? outline.sections : [];
-
   return {
     title:
       typeof outline.title === "string" && outline.title.trim()
@@ -66,9 +64,10 @@ export function filterOutlineToKnownAnchors(
               evidence,
             };
           })
-          .filter((bullet): bullet is NonNullable<typeof bullet> => !!bullet);
+          .filter((bullet): bullet is NonNullable<typeof bullet> =>
+            Boolean(bullet),
+          );
         if (bullets.length === 0) return undefined;
-
         const anchorIds = [
           ...new Set([
             ...(Array.isArray(section.anchorIds)
@@ -83,7 +82,9 @@ export function filterOutlineToKnownAnchors(
           bullets,
         };
       })
-      .filter((section): section is NonNullable<typeof section> => !!section),
+      .filter((section): section is NonNullable<typeof section> =>
+        Boolean(section),
+      ),
   };
 }
 
@@ -100,7 +101,6 @@ export function normalizeSectionGuide(
 
   for (const rawPoint of rawPoints) {
     if (!isRecord(rawPoint) || typeof rawPoint.text !== "string") continue;
-
     const text = cleanGuideText(rawPoint.text);
     if (!text) continue;
     const dedupeKey = text
@@ -108,7 +108,6 @@ export function normalizeSectionGuide(
       .replace(/[.!?。！？]+$/gu, "")
       .toLocaleLowerCase();
     if (seenTexts.has(dedupeKey)) continue;
-
     const evidence = normalizeEvidence(rawPoint.evidence, anchorById);
     if (evidence.length === 0) continue;
     const category = GUIDE_CATEGORIES.has(
@@ -116,7 +115,6 @@ export function normalizeSectionGuide(
     )
       ? (rawPoint.category as SectionGuideCategory)
       : "fact";
-
     points.push({ category, text, evidence });
     seenTexts.add(dedupeKey);
     if (points.length >= 18) break;
@@ -124,10 +122,9 @@ export function normalizeSectionGuide(
 
   if (points.length === 0) {
     throw new Error(
-      "模型未返回可追溯的原文引文（traceable evidence quote），请重试。",
+      "模型未返回带逐字原文 evidence quote 的可追溯内容，请重试。",
     );
   }
-
   return {
     title:
       cleanGuideText(
@@ -142,7 +139,6 @@ export function sectionGuideToMarkdown(guide: SectionGuide): string {
     category,
     points: guide.points.filter((point) => point.category === category),
   }));
-
   return [
     `## ${guide.title}`,
     ...groups
@@ -166,7 +162,6 @@ function normalizeEvidence(
   if (!Array.isArray(value)) return [];
   const evidence: EvidenceReference[] = [];
   const seen = new Set<string>();
-
   for (const rawItem of value) {
     if (
       !isRecord(rawItem) ||
@@ -178,7 +173,6 @@ function normalizeEvidence(
     const anchor = anchorById.get(rawItem.anchorId);
     const quote = rawItem.quote.trim();
     if (!anchor || !quoteMatchesSource(anchor.text, quote)) continue;
-
     const key = `${anchor.id}\u0000${quote.toLocaleLowerCase()}`;
     if (seen.has(key)) continue;
     evidence.push({ anchorId: anchor.id, quote });

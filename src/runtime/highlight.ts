@@ -3,13 +3,26 @@ import {
   type BBoxCoordinateSpace,
   type PdfRect,
 } from "../core/anchorRect";
-import { findQuotesInSegments } from "../core/textQuote";
+import {
+  findApproximateQuoteInSegments,
+  findQuotesInSegments,
+} from "../core/textQuote";
+import {
+  locateSemanticSpan,
+  type SemanticRanker,
+} from "../core/semanticLocator";
 import type { AnchorChunk, PageSize } from "../core/types";
-import { shouldTryTemporaryHighlight } from "./preferences";
+import {
+  readSemanticSettings,
+  shouldTryTemporaryHighlight,
+} from "./preferences";
+import { SemanticClient } from "./semanticClient";
 
 type ReaderLocation =
   | { pageIndex: number }
   | { position: { pageIndex: number; rects: PdfRect[] } };
+
+type ReaderPosition = { pageIndex: number; rects: PdfRect[] };
 
 interface RuntimePdfChar {
   c?: string;
@@ -34,6 +47,7 @@ interface RuntimePdfView {
   };
   _pdfPages?: Array<{ chars?: RuntimePdfChar[] }>;
   _selectionRanges?: unknown[];
+  _highlightedPosition?: unknown;
   _render?: () => void;
   navigateToPosition?: (
     position: { pageIndex: number; rects: PdfRect[] },
@@ -58,6 +72,13 @@ interface OpenAnchorDeps {
     pageIndex: number,
     quote: string,
     expectedRect?: PdfRect,
+    semanticQuery?: string,
+  ): Promise<boolean>;
+  highlightRect(
+    openedReader: unknown,
+    itemID: number,
+    pageIndex: number,
+    rect: PdfRect,
   ): Promise<boolean>;
   resolvePageSize(
     itemID: number,
@@ -75,6 +96,7 @@ interface OpenAnchorDeps {
 const defaults: OpenAnchorDeps = {
   openReader: (itemID, location) => Zotero.Reader.open(itemID, location),
   highlightQuote: highlightQuoteInReader,
+  highlightRect: highlightRectInReader,
   resolvePageSize: resolvePageSizeFromReader,
   navigateReader: navigateOpenReader,
   wantsHighlight: shouldTryTemporaryHighlight,
@@ -86,6 +108,7 @@ export async function openAnchor(
     anchor: AnchorChunk;
     pageSize?: PageSize;
     quote?: string;
+    semanticQuery?: string;
   },
   overrides: Partial<OpenAnchorDeps> = {},
 ): Promise<void> {
@@ -101,7 +124,8 @@ export async function openAnchor(
   let openedReader: unknown;
   let resolvedPageSize = input.pageSize;
   const quote = input.quote?.trim();
-  if (quote) {
+  const semanticQuery = input.semanticQuery?.trim();
+  if (quote || semanticQuery) {
     openedReader = await deps.openReader(input.attachment.id, pageLocation);
     if (anchor.bbox && !resolvedPageSize) {
       resolvedPageSize = await deps.resolvePageSize(
@@ -115,7 +139,7 @@ export async function openAnchor(
         ? anchorToPdfRect(
             anchor.bbox,
             resolvedPageSize,
-            input.pageSize ? "auto" : "normalized-1000",
+            anchor.bboxSpace || "normalized-1000",
           )
         : undefined;
     if (
@@ -123,8 +147,9 @@ export async function openAnchor(
         openedReader,
         input.attachment.id,
         anchor.pageIndex,
-        quote,
+        quote || semanticQuery || "",
         expectedRect,
+        semanticQuery,
       )
     ) {
       return;
@@ -134,20 +159,6 @@ export async function openAnchor(
 
   if (!anchor.bbox) {
     if (!quote) await deps.openReader(input.attachment.id, pageLocation);
-    return;
-  }
-
-  if (input.pageSize) {
-    const location = positionLocation(
-      anchor.pageIndex,
-      anchor.bbox,
-      input.pageSize,
-    );
-    if (quote) {
-      await deps.navigateReader(openedReader, input.attachment.id, location);
-    } else {
-      await deps.openReader(input.attachment.id, location);
-    }
     return;
   }
 
@@ -164,16 +175,25 @@ export async function openAnchor(
     return;
   }
 
-  await deps.navigateReader(
-    openedReader,
-    input.attachment.id,
-    positionLocation(
-      anchor.pageIndex,
-      anchor.bbox,
-      pageSize,
-      "normalized-1000",
-    ),
+  const rect = anchorToPdfRect(
+    anchor.bbox,
+    pageSize,
+    anchor.bboxSpace || "normalized-1000",
   );
+  if (
+    await deps.highlightRect(
+      openedReader,
+      input.attachment.id,
+      anchor.pageIndex,
+      rect,
+    )
+  ) {
+    return;
+  }
+
+  await deps.navigateReader(openedReader, input.attachment.id, {
+    position: { pageIndex: anchor.pageIndex, rects: [rect] },
+  });
 }
 
 export async function highlightQuoteInReader(
@@ -182,6 +202,8 @@ export async function highlightQuoteInReader(
   pageIndex: number,
   quote: string,
   expectedRect?: PdfRect,
+  semanticQuery?: string,
+  semanticRanker: SemanticRanker = rankSemanticCandidates,
 ): Promise<boolean> {
   let reader = asRuntimeReader(openedReader);
 
@@ -204,22 +226,56 @@ export async function highlightQuoteInReader(
           ),
         )
         .filter((range): range is NonNullable<typeof range> => Boolean(range));
+      if (ranges.length === 0 && expectedRect) {
+        const scoped = characterScopeForRect(chars, expectedRect);
+        if (scoped) {
+          const scopedCharacters = chars.slice(scoped.start, scoped.end);
+          const approximate = findApproximateQuoteInSegments(
+            scopedCharacters.map((character) => character.c || ""),
+            quote,
+            {
+              minScore: 0.62,
+              minScoreGap: 0.04,
+            },
+          );
+          if (approximate) {
+            const range = buildSelectionRange(
+              chars,
+              pageIndex,
+              scoped.start + approximate.startSegment,
+              scoped.start + approximate.endSegment + 1,
+            );
+            if (range) ranges.push(range);
+          }
+          if (ranges.length === 0 && semanticQuery) {
+            try {
+              const semantic = await locateSemanticSpan(
+                scopedCharacters.map((character) => character.c || ""),
+                semanticQuery,
+                semanticRanker,
+              );
+              if (semantic) {
+                const range = buildSelectionRange(
+                  chars,
+                  pageIndex,
+                  scoped.start + semantic.startSegment,
+                  scoped.start + semantic.endSegment + 1,
+                );
+                if (range) ranges.push(range);
+              }
+            } catch (error) {
+              logSemanticHighlightError(pageIndex, error);
+            }
+          }
+        }
+      }
       const range = chooseClosestRange(ranges, expectedRect);
       if (!range || !view._iframeWindow || !view._render) return false;
 
       try {
         // TODO: These private fields were verified against Zotero 9.0.6 and
         // zotero/reader. Keep the bbox/page fallback for future API changes.
-        const selectionRanges = Components.utils.cloneInto(
-          [range],
-          view._iframeWindow,
-        ) as (typeof range)[];
-        view._selectionRanges = selectionRanges;
-        view._render();
-        view.navigateToPosition?.(selectionRanges[0].position, {
-          block: "center",
-        });
-        return true;
+        return applyPersistentSelection(view, range);
       } catch (error) {
         logExactHighlightError(pageIndex, error);
         return false;
@@ -228,6 +284,96 @@ export async function highlightQuoteInReader(
     await Zotero.Promise.delay(50);
   }
   return false;
+}
+
+async function rankSemanticCandidates(
+  query: string,
+  documents: string[],
+): Promise<number[]> {
+  const settings = readSemanticSettings();
+  if (settings.provider === "none") return [];
+  return new SemanticClient(settings).score(query, documents);
+}
+
+export async function highlightRectInReader(
+  openedReader: unknown,
+  itemID: number,
+  pageIndex: number,
+  rect: PdfRect,
+): Promise<boolean> {
+  if (typeof Zotero === "undefined") return false;
+  let reader = asRuntimeReader(openedReader);
+
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    reader ??= findReader(itemID);
+    const view = reader?._internalReader?._lastView;
+    const page = view?._pdfPages?.[pageIndex];
+    if (view?._render && page) {
+      try {
+        const position = { pageIndex, rects: [roundRect(rect)] };
+        view._selectionRanges = [];
+        view._highlightedPosition = cloneIntoReader(position, view);
+        view._render();
+        view.navigateToPosition?.(position, { block: "center" });
+        return true;
+      } catch (error) {
+        logRectHighlightError(pageIndex, error);
+        return false;
+      }
+    }
+    await Zotero.Promise.delay(50);
+  }
+  return false;
+}
+
+function applyPersistentSelection<T extends { position: ReaderPosition }>(
+  view: RuntimePdfView,
+  range: T,
+): boolean {
+  if (!view._iframeWindow || !view._render) return false;
+  const selectionRanges = cloneIntoReader([range], view) as T[];
+  view._highlightedPosition = undefined;
+  view._selectionRanges = selectionRanges;
+  view._render();
+  view.navigateToPosition?.(selectionRanges[0].position, { block: "center" });
+  return true;
+}
+
+function cloneIntoReader<T>(value: T, view: RuntimePdfView): T {
+  if (!view._iframeWindow || typeof Components === "undefined") return value;
+  return Components.utils.cloneInto(value, view._iframeWindow) as T;
+}
+
+function characterScopeForRect(
+  chars: RuntimePdfChar[],
+  rect: PdfRect,
+): { start: number; end: number } | undefined {
+  const padding = 2;
+  const expanded: PdfRect = [
+    rect[0] - padding,
+    rect[1] - padding,
+    rect[2] + padding,
+    rect[3] + padding,
+  ];
+  let start = -1;
+  let end = -1;
+  chars.forEach((character, index) => {
+    const charRect =
+      asPdfRect(character.inlineRect) || asPdfRect(character.rect);
+    if (!charRect || !rectsOverlap(charRect, expanded)) return;
+    if (start < 0) start = index;
+    end = index + 1;
+  });
+  return start >= 0 && end > start ? { start, end } : undefined;
+}
+
+function rectsOverlap(left: PdfRect, right: PdfRect): boolean {
+  return !(
+    left[2] < right[0] ||
+    left[0] > right[2] ||
+    left[3] < right[1] ||
+    left[1] > right[3]
+  );
 }
 
 function chooseClosestRange<T extends { position: { rects: PdfRect[] } }>(
@@ -417,5 +563,21 @@ function logExactHighlightError(pageIndex: number, error: unknown): void {
   ztoolkit.log("Exact quote highlight failed", {
     pageIndex,
     reason: String(error),
+  });
+}
+
+function logRectHighlightError(pageIndex: number, error: unknown): void {
+  if (typeof ztoolkit === "undefined") return;
+  ztoolkit.log("Persistent anchor rect highlight failed", {
+    pageIndex,
+    reason: String(error),
+  });
+}
+
+function logSemanticHighlightError(pageIndex: number, error: unknown): void {
+  if (typeof ztoolkit === "undefined") return;
+  ztoolkit.log("Optional semantic anchor matching failed", {
+    pageIndex,
+    reason: error instanceof Error ? "SemanticProviderError" : "UnknownError",
   });
 }

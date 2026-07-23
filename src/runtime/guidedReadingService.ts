@@ -6,8 +6,12 @@ import type {
   ReadingOutlineSection,
   SectionGuide,
 } from "../core/types";
-import { normalizeSectionGuide } from "../core/llmResponses";
-import { CACHE_VERSION, GUIDE_CACHE_VERSION, PluginCache } from "./cache";
+import {
+  filterOutlineToKnownAnchors,
+  normalizeSectionGuide,
+} from "../core/llmResponses";
+import { resolveMinerUOptions } from "../core/mineruOptions";
+import { GUIDE_CACHE_VERSION, PluginCache, isUsableParseCache } from "./cache";
 import { exportAnkiTsv } from "./ankiExport";
 import { LLMClient } from "./llmClient";
 import { MinerUClient } from "./mineruClient";
@@ -36,18 +40,112 @@ export class GuidedReadingService {
     return this.attachment;
   }
 
+  async loadCachedState(): Promise<{
+    parsed?: NormalizedMinerUOutput;
+    outline?: ReadingOutline;
+    sections: Record<string, SectionGuide>;
+  }> {
+    const attachment = await this.getAttachment();
+    const parseCache = await this.cache.readParse(attachment.key);
+    if (!isUsableParseCache(parseCache)) return { sections: {} };
+    this.parsed = parseCache.parsed;
+
+    const guideCache = await this.cache.readGuide(attachment.key);
+    if (guideCache?.version !== GUIDE_CACHE_VERSION) {
+      return { parsed: this.parsed, sections: {} };
+    }
+
+    const outline = guideCache.outline
+      ? filterOutlineToKnownAnchors(guideCache.outline, this.parsed.anchors)
+      : undefined;
+    const sections: Record<string, SectionGuide> = {};
+    for (const [title, rawGuide] of Object.entries(
+      guideCache.structuredSections || {},
+    )) {
+      try {
+        sections[title] = normalizeSectionGuide(
+          rawGuide,
+          this.parsed.anchors,
+          title,
+        );
+      } catch (error) {
+        ztoolkit.log("Ignoring invalid cached section guide", {
+          attachmentKey: attachment.key,
+          title,
+          reason: String(error),
+        });
+      }
+    }
+    return { parsed: this.parsed, outline, sections };
+  }
+
+  async readAsset(assetName: string): Promise<
+    | {
+        bytes: Uint8Array;
+        mimeType: string;
+      }
+    | undefined
+  > {
+    const attachment = await this.getAttachment();
+    const bytes = await this.cache.readAsset(attachment.key, assetName);
+    if (!bytes) return undefined;
+    const extension = assetName.slice(assetName.lastIndexOf(".")).toLowerCase();
+    const mimeType =
+      extension === ".png"
+        ? "image/png"
+        : extension === ".webp"
+          ? "image/webp"
+          : "image/jpeg";
+    return { bytes, mimeType };
+  }
+
   async ensureParsed(force = false): Promise<NormalizedMinerUOutput> {
     const attachment = await this.getAttachment();
     if (!force) {
       const cached = await this.cache.readParse(attachment.key);
-      if (cached?.version === CACHE_VERSION && cached.parsed?.anchors?.length) {
+      if (isUsableParseCache(cached)) {
         this.parsed = cached.parsed;
         return cached.parsed;
       }
     }
 
     const filePath = await getAttachmentFilePath(attachment);
-    const parsed = await new MinerUClient(readMinerUSettings()).parseLocalPdf({
+    const mineruSettings = readMinerUSettings();
+    let extractedText = "";
+    let totalPages: number | undefined;
+    if (mineruSettings.modelVersion === "auto") {
+      try {
+        extractedText = await attachment.attachmentText;
+      } catch (error) {
+        ztoolkit.log("Unable to inspect PDF text layer for MinerU auto mode", {
+          attachmentKey: attachment.key,
+          reason: String(error),
+        });
+      }
+      try {
+        const pageInfo = await Zotero.Fulltext.getPages(attachment.id);
+        totalPages = pageInfo ? pageInfo.total : undefined;
+      } catch {
+        totalPages = undefined;
+      }
+    }
+    const resolvedOptions = resolveMinerUOptions(mineruSettings, {
+      extractedText,
+      totalPages,
+    });
+    ztoolkit.log("Resolved MinerU parsing options", {
+      attachmentKey: attachment.key,
+      modelVersion: resolvedOptions.modelVersion,
+      enableOcr: resolvedOptions.enableOcr,
+      textLayerUsable: resolvedOptions.textLayerUsable,
+    });
+    const parsed = await new MinerUClient({
+      apiKey: mineruSettings.apiKey,
+      language: mineruSettings.language,
+      pollIntervalMs: mineruSettings.pollIntervalMs,
+      modelVersion: resolvedOptions.modelVersion,
+      enableOcr: resolvedOptions.enableOcr,
+    }).parseLocalPdf({
       filePath,
       fileName: getAttachmentDisplayName(attachment),
       attachmentKey: attachment.key,
@@ -78,14 +176,15 @@ export class GuidedReadingService {
       attachmentKey: attachment.key,
       createdAt: new Date().toISOString(),
       outline,
-      sections: currentCache?.sections || {},
-      structuredSections: currentCache?.structuredSections || {},
+      sections: force ? {} : currentCache?.sections || {},
+      structuredSections: force ? {} : currentCache?.structuredSections || {},
     });
     return outline;
   }
 
   async generateSectionGuide(
     section: ReadingOutlineSection,
+    force = false,
   ): Promise<SectionGuide> {
     const attachment = await this.getAttachment();
     const parsed = await this.ensureParsed();
@@ -93,7 +192,7 @@ export class GuidedReadingService {
     const cached = await this.cache.readGuide(attachment.key);
     const currentCache =
       cached?.version === GUIDE_CACHE_VERSION ? cached : undefined;
-    if (currentCache?.structuredSections?.[cacheKey]) {
+    if (!force && currentCache?.structuredSections?.[cacheKey]) {
       try {
         return normalizeSectionGuide(
           currentCache.structuredSections[cacheKey],
@@ -143,12 +242,10 @@ export class GuidedReadingService {
     return note.id;
   }
 
-  async exportAnki(markdown: string): Promise<string> {
-    const parsed = await this.ensureParsed();
+  async exportAnki(markdown: string): Promise<string | undefined> {
     return exportAnkiTsv({
       title: this.title(),
       guideText: markdown,
-      anchors: parsed.anchors,
     });
   }
 

@@ -1,10 +1,28 @@
 import type { LLMProviderId, ProviderSettings } from "../core/types";
+import type {
+  MinerUModelPreference,
+  MinerUOcrMode,
+  ResolvedMinerUModel,
+} from "../core/mineruOptions";
+import {
+  normalizeSemanticProvider,
+  semanticProviderDefinition,
+  type SemanticProviderSettings,
+} from "../core/semanticSettings";
 import { LLM_PROVIDERS } from "../core/settings";
 import { getPref } from "../utils/prefs";
 
 export interface MinerUSettings {
   apiKey: string;
-  modelVersion: string;
+  modelVersion: MinerUModelPreference;
+  language: string;
+  ocrMode: MinerUOcrMode;
+  pollIntervalMs: number;
+}
+
+export interface ResolvedMinerUSettings {
+  apiKey: string;
+  modelVersion: ResolvedMinerUModel;
   language: string;
   enableOcr: boolean;
   pollIntervalMs: number;
@@ -13,7 +31,11 @@ export interface MinerUSettings {
 export function readProviderSettings(): ProviderSettings {
   const provider = normalizeProvider(getPref("llmProvider"));
   const providerDefaults = LLM_PROVIDERS[provider];
-  const model = String(getPref("llmModel") || providerDefaults.defaultModel);
+  const selectedModel = String(getPref("llmModel") || "");
+  const model =
+    selectedModel === "__custom__"
+      ? String(getPref("llmCustomModel") || "")
+      : selectedModel || providerDefaults.defaultModel;
   const baseUrl = String(
     getPref("llmBaseUrl") || providerDefaults.baseUrl || "",
   );
@@ -30,10 +52,25 @@ export function readProviderSettings(): ProviderSettings {
 export function readMinerUSettings(): MinerUSettings {
   return {
     apiKey: String(getPref("mineruApiKey") || ""),
-    modelVersion: String(getPref("mineruModelVersion") || "vlm"),
+    modelVersion: normalizeMinerUModel(getPref("mineruModelVersion")),
     language: String(getPref("mineruLanguage") || "ch"),
-    enableOcr: Boolean(getPref("mineruEnableOcr")),
+    ocrMode: normalizeOcrMode(getPref("mineruOcrMode")),
     pollIntervalMs: Number(getPref("mineruPollIntervalMs") || 3000),
+  };
+}
+
+export function readSemanticSettings(): SemanticProviderSettings {
+  const provider = normalizeSemanticProvider(getPref("semanticProvider"));
+  const definition = semanticProviderDefinition(provider);
+  const selectedModel = String(getPref("semanticModel") || "");
+  return {
+    provider,
+    apiKey: String(getPref("semanticApiKey") || ""),
+    model:
+      selectedModel === "__custom__"
+        ? String(getPref("semanticCustomModel") || "")
+        : selectedModel || definition.defaultModel,
+    baseUrl: String(getPref("semanticBaseUrl") || definition.baseUrl),
   };
 }
 
@@ -48,4 +85,12 @@ export function shouldTryTemporaryHighlight(): boolean {
 function normalizeProvider(value: unknown): LLMProviderId {
   const provider = String(value || "deepseek");
   return provider in LLM_PROVIDERS ? (provider as LLMProviderId) : "deepseek";
+}
+
+function normalizeMinerUModel(value: unknown): MinerUModelPreference {
+  return value === "pipeline" || value === "vlm" ? value : "auto";
+}
+
+function normalizeOcrMode(value: unknown): MinerUOcrMode {
+  return value === "always" ? "always" : "never";
 }

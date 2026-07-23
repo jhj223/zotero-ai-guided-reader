@@ -22,6 +22,8 @@ test("outline prompt requires a verbatim quote for every visible claim", () => {
   assert.match(prompt, /"anchorId"/);
   assert.match(prompt, /"quote"/);
   assert.match(prompt, /verbatim|逐字|原文引文/i);
+  assert.match(prompt, /1 至 3 条 evidence/);
+  assert.match(prompt, /不得只返回第一处/);
 });
 
 test("section prompt requires contiguous source-language evidence", () => {
@@ -47,4 +49,5 @@ test("section prompt requires contiguous source-language evidence", () => {
   assert.match(prompt, /连续/);
   assert.match(prompt, /源语言/);
   assert.match(prompt, /不得翻译|不能翻译/);
+  assert.match(prompt, /不得只取第一处/);
 });

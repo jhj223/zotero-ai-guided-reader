@@ -3,6 +3,7 @@ import {
   filterOutlineToKnownAnchors,
   normalizeSectionGuide,
 } from "../core/llmResponses";
+import { LLM_PROVIDERS } from "../core/settings";
 import type {
   AnchorChunk,
   AnnotationContext,
@@ -11,7 +12,7 @@ import type {
   ReadingOutlineSection,
   SectionGuide,
 } from "../core/types";
-import { LLM_PROVIDERS } from "../core/settings";
+import { runLocalCli } from "./localCliRunner";
 
 export class LLMClient {
   constructor(private readonly settings: ProviderSettings) {}
@@ -23,12 +24,14 @@ export class LLMClient {
   }): Promise<ReadingOutline> {
     const response = await this.complete({
       system:
-        "你是严谨的中文学术论文带读助手。只根据提供的论文结构和锚点写作，不编造外部事实。",
+        "你是严谨的中文学术论文带读助手。只能根据给定论文锚点写作，不得补充外部事实。只输出有效 JSON。",
       user: buildOutlinePrompt(input.title, input.anchors, input.annotations),
       json: true,
     });
-    const outline = extractJsonObject<ReadingOutline>(response);
-    return filterOutlineToKnownAnchors(outline, input.anchors);
+    return filterOutlineToKnownAnchors(
+      extractJsonObject<ReadingOutline>(response),
+      input.anchors,
+    );
   }
 
   async generateSectionGuide(input: {
@@ -38,12 +41,12 @@ export class LLMClient {
   }): Promise<SectionGuide> {
     const scopedAnchors = getScopedSectionAnchors(input.section, input.anchors);
     if (scopedAnchors.length === 0) {
-      throw new Error("当前章节没有可用的原文锚点，无法生成可追溯精读。");
+      throw new Error("当前章节没有可用原文锚点，无法生成可追溯精读。");
     }
 
     const response = await this.complete({
       system:
-        "你是严谨的中文学术论文精读助手。只输出 JSON。每个要点必须是原子化陈述，并附带源语言逐字原文引文；禁止无证据内容、Markdown、外部知识和重复表述。",
+        "你是严谨的中文论文精读助手。每个论述必须附带逐字原文证据；不得输出无证据内容、外部知识或 Markdown。只输出有效 JSON。",
       user: buildSectionPrompt(input.title, input.section, scopedAnchors),
       json: true,
     });
@@ -59,14 +62,23 @@ export class LLMClient {
     user: string;
     json: boolean;
   }): Promise<string> {
+    if (
+      this.settings.llmProvider === "codex-cli" ||
+      this.settings.llmProvider === "claude-cli"
+    ) {
+      return runLocalCli({
+        provider: this.settings.llmProvider,
+        model: this.settings.model,
+        system: input.system,
+        user: input.user,
+      });
+    }
     if (!this.settings.llmApiKey.trim()) {
-      throw new Error("LLM API Key is not configured.");
+      throw new Error("尚未配置 LLM API Key。");
     }
-
-    if (this.settings.llmProvider === "anthropic") {
-      return this.completeAnthropic(input);
-    }
-    return this.completeOpenAICompatible(input);
+    return this.settings.llmProvider === "anthropic"
+      ? this.completeAnthropic(input)
+      : this.completeOpenAICompatible(input);
   }
 
   private async completeAnthropic(input: {
@@ -143,47 +155,24 @@ export function buildOutlinePrompt(
   anchors: AnchorChunk[],
   annotations: AnnotationContext[],
 ): string {
-  const compactAnchors = anchors.slice(0, 120).map((anchor) => ({
-    id: anchor.id,
-    type: anchor.type,
-    page: anchor.pageNumber,
-    section: anchor.sectionPath.join(" > "),
-    text: truncate(anchor.text, 700),
-  }));
+  const compactAnchors = anchors.slice(0, 160).map(compactAnchorForPrompt);
   return `论文标题：${title}
 
-已解析锚点（按阅读顺序，MinerU page_idx 已转成用户可见页码）：
-${JSON.stringify(compactAnchors, null, 2)}
+按阅读顺序排列的 MinerU 锚点：
+${JSON.stringify(compactAnchors)}
 
-用户已有批注/高亮（这些区域降低展开优先级，必要时标注“你已关注过”）：
-${JSON.stringify(annotations.slice(0, 50), null, 2)}
+用户已有高亮/批注（相关区域降低展开优先级，必要时标注“你已关注过”）：
+${JSON.stringify(annotations.slice(0, 50))}
 
-请先生成结构化大纲 JSON，不要写正文。格式：
-{
-  "title": "中文导读标题",
-  "sections": [
-    {
-      "title": "章节名",
-      "anchorIds": ["chunk_0001"],
-      "bullets": [
-        {
-          "claim": "要点",
-          "evidence": [
-            {"anchorId": "chunk_0001", "quote": "从锚点 text 复制的源语言逐字原文引文"}
-          ]
-        }
-      ]
-    }
-  ]
-}
+先生成 section 级结构化大纲，不展开全文。只输出以下 JSON：
+{"title":"中文导读标题","sections":[{"title":"章节名","anchorIds":["chunk_0001"],"bullets":[{"claim":"有证据支持的中文要点","evidence":[{"anchorId":"chunk_0001","quote":"从对应 text 连续逐字复制的原文"}]}]}]}
 
-要求：
-1. 每个 bullet 必须有 evidence；每条 evidence 的 anchorId 只能使用已提供的 id。
-2. quote 必须从对应锚点 text 中连续逐字复制，保留原文语言，不能翻译、改写、拼接或使用省略号。
-3. quote 建议为 8 至 35 个英文词或 12 至 80 个中文字符，必须足以唯一定位该 claim。
-4. claim 可以用中文解释，但必须严格受 evidence 支持；无法提供逐字引文的 claim 不得输出。
-5. 优先覆盖未被用户批注过的重要章节。
-6. 页数较多时只做 section 级摘要，不展开逐段精读。`;
+规则：
+1. 每个 bullet 必须有 1 至 3 条 evidence；同一论述若由多处正文共同支持或在多处重复出现，必须保留所有直接相关位置，不得只返回第一处；anchorId 只能使用给定 id。
+2. quote 必须从该锚点 text 连续逐字复制，不得翻译、改写、拼接或使用省略号。
+3. 每个 section 的 anchorIds 应覆盖该章节后续精读需要的关键正文、公式和图表锚点。
+4. 图片只有标题/描述而没有可核实数据时，不得推断图中结论。
+5. 只输出 JSON。`;
 }
 
 export function buildSectionPrompt(
@@ -191,55 +180,49 @@ export function buildSectionPrompt(
   section: ReadingOutlineSection,
   scopedAnchors: AnchorChunk[],
 ): string {
-  const compactAnchors = scopedAnchors.map((anchor) => ({
+  return `论文标题：${title}
+当前章节：${section.title}
+章节大纲：${JSON.stringify(section)}
+可引用锚点：${JSON.stringify(scopedAnchors.map(compactAnchorForPrompt))}
+
+输出 JSON：
+{"title":"中文章节标题","points":[{"category":"fact | mechanism | judgment | caution","text":"一条可独立阅读的中文原子化要点，可保留 $...$ 或 $$...$$ LaTeX","evidence":[{"anchorId":"chunk_0001","quote":"从该锚点 text 连续逐字复制的原文"}]}]}
+
+规则：
+1. 生成 6 至 14 条；证据不足可以更少，不得凑数。
+2. 每条只表达一个事实、机制、作者判断或局限，并有 1 至 3 条 evidence；若多处原文共同支撑该论述，必须返回所有直接相关且不重复的位置，不得只取第一处。
+3. quote 必须保留源语言并逐字复制，不得翻译、改写、跨段拼接或使用省略号。
+4. 公式使用锚点 rich.latex 中的 LaTeX；表格仅解释给定 tableHtml；图表仅解释 caption/description 明示内容。
+5. 不得输出外部知识、建议、过渡段、模型推测或 JSON 之外的文字。`;
+}
+
+function compactAnchorForPrompt(anchor: AnchorChunk) {
+  return {
     id: anchor.id,
     type: anchor.type,
     page: anchor.pageNumber,
     section: anchor.sectionPath.join(" > "),
-    text: truncate(anchor.text, 1200),
-  }));
-
-  return `论文标题：${title}
-当前章节：${section.title}
-章节大纲：${JSON.stringify(section, null, 2)}
-可引用锚点：${JSON.stringify(compactAnchors, null, 2)}
-
-请输出以下结构的 JSON 对象：
-{
-  "title": "简洁的中文章节标题",
-  "points": [
-    {
-      "category": "fact | mechanism | judgment | caution",
-      "text": "一条可独立阅读的中文原子化要点",
-      "evidence": [
-        {"anchorId": "chunk_0001", "quote": "从该锚点 text 连续复制的源语言逐字引文"}
-      ]
-    }
-  ]
-}
-
-硬性要求：
-1. 生成 6 至 14 条要点；证据不足时可以更少，但不能为凑数扩写。
-2. 每条只表达一个事实、机制、作者判断或局限，建议 35 至 120 个中文字符。
-3. 每条必须有 1 至 3 条 evidence，anchorId 只能来自“可引用锚点”。
-4. 每个 quote 必须从对应锚点 text 中连续逐字复制，保留源语言，不得翻译、改写、跨段拼接或使用省略号；建议为 8 至 35 个英文词或 12 至 80 个中文字符。
-5. fact 必须由原文直接陈述；mechanism 必须有原文机制或论证链依据；judgment 只表达作者的判断；caution 只表达原文限制、条件或证据边界。
-6. 不要输出无原文依据的背景知识、建议、过渡段、总结段或模型推测。
-7. 不要输出 Markdown、锚点占位符、列表符号、粗体标记或 JSON 之外的文字。
-8. 不要重复同一结论；优先选择能让读者理解本节研究问题、方法、关键结果和边界的内容。`;
+    text: truncate(anchor.text, 1000),
+    rich: anchor.richContent
+      ? {
+          latex: truncate(anchor.richContent.latex || "", 700),
+          tableHtml: truncate(anchor.richContent.tableHtml || "", 1400),
+          caption: truncate(anchor.richContent.caption || "", 500),
+          description: truncate(anchor.richContent.description || "", 700),
+        }
+      : undefined,
+  };
 }
 
 function getScopedSectionAnchors(
   section: ReadingOutlineSection,
   anchors: AnchorChunk[],
 ): AnchorChunk[] {
-  const sectionAnchorIds = new Set([
+  const ids = new Set([
     ...(section.anchorIds || []),
     ...section.bullets.flatMap((bullet) => bullet.anchorIds),
   ]);
-  return anchors
-    .filter((anchor) => sectionAnchorIds.has(anchor.id))
-    .slice(0, 80);
+  return anchors.filter((anchor) => ids.has(anchor.id)).slice(0, 80);
 }
 
 function truncate(text: string, maxLength: number): string {

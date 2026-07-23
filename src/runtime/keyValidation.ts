@@ -1,5 +1,6 @@
-import type { ProviderSettings } from "../core/types";
 import { LLM_PROVIDERS } from "../core/settings";
+import type { ProviderSettings } from "../core/types";
+import { validateLocalCli } from "./localCliRunner";
 
 export interface KeyCheckResult {
   ok: boolean;
@@ -17,20 +18,20 @@ export type FetchLike = (
   init?: RequestInit,
 ) => Promise<FetchResponseLike>;
 
+type CliValidator = (
+  provider: "codex-cli" | "claude-cli",
+) => Promise<KeyCheckResult>;
+
 const MINERU_BATCH_URL = "https://mineru.net/api/v4/file-urls/batch";
 
 export async function validateMinerUKey(
   apiKey: string,
   fetchImpl: FetchLike = fetch,
 ): Promise<KeyCheckResult> {
-  if (!apiKey.trim()) {
-    return { ok: false, message: "MinerU API Key 未填写" };
-  }
+  if (!apiKey.trim()) return { ok: false, message: "MinerU API Key 未填写" };
 
   let response: FetchResponseLike;
   try {
-    // An empty files array is rejected at the parameter layer, which is
-    // enough to prove the token passed authentication without creating a task.
     response = await fetchImpl(MINERU_BATCH_URL, {
       method: "POST",
       headers: {
@@ -38,6 +39,8 @@ export async function validateMinerUKey(
         Accept: "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
+      // Parameter-level rejection is sufficient to verify authentication and
+      // does not create a parsing task or consume page quota.
       body: JSON.stringify({ files: [] }),
     });
   } catch (error) {
@@ -46,7 +49,6 @@ export async function validateMinerUKey(
       message: `无法连接 MinerU 服务器：${describeError(error)}`,
     };
   }
-
   if (response.status === 401 || response.status === 403) {
     return {
       ok: false,
@@ -59,7 +61,14 @@ export async function validateMinerUKey(
 export async function validateLlmKey(
   settings: ProviderSettings,
   fetchImpl: FetchLike = fetch,
+  cliValidator: CliValidator = validateLocalCli,
 ): Promise<KeyCheckResult> {
+  if (
+    settings.llmProvider === "codex-cli" ||
+    settings.llmProvider === "claude-cli"
+  ) {
+    return cliValidator(settings.llmProvider);
+  }
   if (!settings.llmApiKey.trim()) {
     return { ok: false, message: "LLM API Key 未填写" };
   }
@@ -69,7 +78,6 @@ export async function validateLlmKey(
     /\/$/,
     "",
   );
-
   try {
     if (settings.llmProvider === "anthropic") {
       const response = await fetchImpl(`${baseUrl}/v1/models`, {
@@ -90,8 +98,6 @@ export async function validateLlmKey(
       return interpretLlmStatus(models.status, provider.label);
     }
 
-    // Some providers (e.g. VolcEngine Ark) do not expose /models; fall back
-    // to the cheapest possible chat call so authentication still gets tested.
     const chat = await fetchImpl(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
@@ -115,7 +121,7 @@ export async function validateLlmKey(
     }
     return {
       ok: true,
-      message: `LLM Key 未被拒绝（${provider.label} 返回 ${chat.status}），若生成报错请检查模型名`,
+      message: `LLM Key 未被拒绝（${provider.label} 返回 ${chat.status}），生成报错时请检查模型名`,
     };
   } catch (error) {
     return {

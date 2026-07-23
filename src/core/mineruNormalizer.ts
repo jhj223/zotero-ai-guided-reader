@@ -2,6 +2,8 @@ import type {
   AnchorChunk,
   AnchorType,
   BBox,
+  BBoxSpace,
+  AnchorRichContent,
   NormalizedMinerUOutput,
   PageSize,
 } from "./types";
@@ -23,6 +25,7 @@ export interface MinerURawOutput {
   contentListV2?: unknown;
   middleJson?: unknown;
   markdown?: string;
+  assetMap?: Record<string, string>;
 }
 
 export function validateMinerUInputLimits(input: {
@@ -43,8 +46,8 @@ export function normalizeMinerUOutput(
   raw: MinerURawOutput,
 ): NormalizedMinerUOutput {
   const anchors =
-    normalizeContentListV2(raw.contentListV2) ??
-    normalizeContentList(raw.contentList) ??
+    normalizeContentListV2(raw.contentListV2, raw.assetMap) ??
+    normalizeContentList(raw.contentList, raw.assetMap) ??
     normalizeMiddleJson(raw.middleJson) ??
     [];
 
@@ -61,7 +64,10 @@ export function normalizeMinerUOutput(
   };
 }
 
-function normalizeContentList(input: unknown): AnchorChunk[] | undefined {
+function normalizeContentList(
+  input: unknown,
+  assetMap?: Record<string, string>,
+): AnchorChunk[] | undefined {
   if (!Array.isArray(input)) return undefined;
   const state = createChunkState();
 
@@ -70,16 +76,20 @@ function normalizeContentList(input: unknown): AnchorChunk[] | undefined {
     const type = String(block.type ?? "unknown");
     if (SKIPPED_TYPES.has(type)) continue;
 
-    const text = textFromLegacyBlock(block).trim();
-    if (!text) continue;
-
     const pageIndex = toPageIndex(block.page_idx);
     const anchorType = mapLegacyType(type, block.text_level);
+    const richContent = richContentFromLegacyBlock(block, assetMap);
+    const text =
+      textFromLegacyBlock(block).trim() ||
+      fallbackRichText(anchorType, richContent);
+    if (!text) continue;
     state.push({
       type: anchorType,
       pageIndex,
       bbox: toBBox(block.bbox),
+      bboxSpace: "normalized-1000",
       text,
+      richContent,
       headingLevel:
         anchorType === "heading" ? toHeadingLevel(block.text_level) : 0,
     });
@@ -88,7 +98,10 @@ function normalizeContentList(input: unknown): AnchorChunk[] | undefined {
   return state.anchors;
 }
 
-function normalizeContentListV2(input: unknown): AnchorChunk[] | undefined {
+function normalizeContentListV2(
+  input: unknown,
+  assetMap?: Record<string, string>,
+): AnchorChunk[] | undefined {
   if (!Array.isArray(input)) return undefined;
   const state = createChunkState();
 
@@ -99,10 +112,12 @@ function normalizeContentListV2(input: unknown): AnchorChunk[] | undefined {
       const type = String(block.type ?? "unknown");
       if (SKIPPED_TYPES.has(type)) continue;
 
-      const text = textFromV2Block(block).trim();
-      if (!text) continue;
-
       const anchorType = mapV2Type(type);
+      const richContent = richContentFromV2Block(block, assetMap);
+      const text =
+        textFromV2Block(block).trim() ||
+        fallbackRichText(anchorType, richContent);
+      if (!text) continue;
       const headingLevel =
         type === "title" && isRecord(block.content)
           ? toHeadingLevel(block.content.level)
@@ -111,7 +126,9 @@ function normalizeContentListV2(input: unknown): AnchorChunk[] | undefined {
         type: anchorType,
         pageIndex,
         bbox: toBBox(block.bbox),
+        bboxSpace: "normalized-1000",
         text,
+        richContent,
         headingLevel,
       });
     }
@@ -140,6 +157,7 @@ function normalizeMiddleJson(input: unknown): AnchorChunk[] | undefined {
         type: anchorType,
         pageIndex,
         bbox: toBBox(block.bbox),
+        bboxSpace: "page-points",
         text,
         headingLevel: anchorType === "heading" ? 1 : 0,
       });
@@ -177,8 +195,10 @@ function createChunkState() {
       type: AnchorType;
       pageIndex: number;
       bbox?: BBox;
+      bboxSpace?: BBoxSpace;
       text: string;
       headingLevel: number;
+      richContent?: AnchorRichContent;
     }) {
       if (input.headingLevel > 0) {
         sectionPath.splice(input.headingLevel - 1);
@@ -192,8 +212,10 @@ function createChunkState() {
         pageIndex: input.pageIndex,
         pageNumber: input.pageIndex + 1,
         bbox: input.bbox,
+        ...(input.bboxSpace ? { bboxSpace: input.bboxSpace } : {}),
         text: input.text,
         sectionPath: sectionPath.filter(Boolean),
+        ...(input.richContent ? { richContent: input.richContent } : {}),
       });
     },
   };
@@ -209,11 +231,141 @@ function textFromLegacyBlock(block: Record<string, unknown>): string {
       .filter(Boolean)
       .join("\n");
   }
-  if (Array.isArray(block.image_caption))
-    return joinStringArray(block.image_caption);
+  if (
+    Array.isArray(block.image_caption) ||
+    Array.isArray(block.chart_caption)
+  ) {
+    return [
+      joinStringArray(block.image_caption),
+      joinStringArray(block.chart_caption),
+      joinStringArray(block.image_description),
+      joinStringArray(block.chart_description),
+      typeof block.content === "string" ? block.content : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
   if (Array.isArray(block.list_items)) return joinStringArray(block.list_items);
   if (typeof block.code_body === "string") return block.code_body;
   return "";
+}
+
+function richContentFromLegacyBlock(
+  block: Record<string, unknown>,
+  assetMap?: Record<string, string>,
+): AnchorRichContent | undefined {
+  const type = String(block.type ?? "unknown");
+  const caption = [
+    joinStringArray(block.table_caption),
+    joinStringArray(block.image_caption),
+    joinStringArray(block.chart_caption),
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const description = [
+    joinStringArray(block.image_description),
+    joinStringArray(block.chart_description),
+    typeof block.content === "string" ? block.content : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const rich = compactRichContent({
+    latex:
+      type === "equation" || type === "interline_equation"
+        ? stripMathDelimiters(typeof block.text === "string" ? block.text : "")
+        : undefined,
+    tableHtml:
+      type === "table" && typeof block.table_body === "string"
+        ? block.table_body
+        : undefined,
+    caption: caption || undefined,
+    description: description || undefined,
+    assetName: resolveAssetName(block.img_path, assetMap),
+  });
+  return hasRichContent(rich) ? rich : undefined;
+}
+
+function richContentFromV2Block(
+  block: Record<string, unknown>,
+  assetMap?: Record<string, string>,
+): AnchorRichContent | undefined {
+  const content = isRecord(block.content) ? block.content : {};
+  const type = String(block.type ?? "unknown");
+  const rich = compactRichContent({
+    latex: type.includes("equation")
+      ? stripMathDelimiters(inlineContentToText(content.math_content))
+      : undefined,
+    tableHtml:
+      type === "table" ? inlineContentToText(content.table_body) : undefined,
+    caption:
+      [
+        inlineContentToText(content.table_caption),
+        inlineContentToText(content.image_caption),
+        inlineContentToText(content.chart_caption),
+      ]
+        .filter(Boolean)
+        .join("\n") || undefined,
+    description:
+      [
+        inlineContentToText(content.image_description),
+        inlineContentToText(content.chart_description),
+        inlineContentToText(content.chart_content),
+      ]
+        .filter(Boolean)
+        .join("\n") || undefined,
+    assetName: resolveAssetName(
+      block.img_path ??
+        block.image_path ??
+        content.img_path ??
+        content.image_path,
+      assetMap,
+    ),
+  });
+  return hasRichContent(rich) ? rich : undefined;
+}
+
+function fallbackRichText(
+  type: AnchorType,
+  rich: AnchorRichContent | undefined,
+): string {
+  if (!rich) return "";
+  if (rich.caption) return rich.caption;
+  if (rich.description) return rich.description;
+  if (rich.latex) return rich.latex;
+  if (type === "table") return "[Table without extractable text]";
+  if (type === "image" && rich.assetName) {
+    return "[Image without extractable caption]";
+  }
+  return "";
+}
+
+function resolveAssetName(
+  value: unknown,
+  assetMap?: Record<string, string>,
+): string | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const normalized = value.replace(/\\/g, "/").replace(/^\.\//, "");
+  return assetMap?.[normalized] ?? assetMap?.[value];
+}
+
+function stripMathDelimiters(value: string): string {
+  return value
+    .trim()
+    .replace(/^\$\$\s*/, "")
+    .replace(/\s*\$\$$/, "")
+    .replace(/^\$\s*/, "")
+    .replace(/\s*\$$/, "")
+    .trim();
+}
+
+function hasRichContent(value: AnchorRichContent): boolean {
+  return Object.values(value).some(Boolean);
+}
+
+function compactRichContent(value: AnchorRichContent): AnchorRichContent {
+  return Object.fromEntries(
+    Object.entries(value).filter((entry) => Boolean(entry[1])),
+  ) as AnchorRichContent;
 }
 
 function textFromV2Block(block: Record<string, unknown>): string {

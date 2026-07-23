@@ -1,30 +1,57 @@
-import type { AnchorChunk } from "../core/types";
-import { PluginCache } from "./cache";
-
 export async function exportAnkiTsv(input: {
   title: string;
   guideText: string;
-  anchors: AnchorChunk[];
-}): Promise<string> {
+}): Promise<string | undefined> {
+  const document = buildAnkiTsv(input);
+  const selectedPath = await new ztoolkit.FilePicker(
+    "导出 Anki TSV",
+    "save",
+    [["Anki TSV (*.tsv)", "*.tsv"]],
+    document.fileName,
+  ).open();
+  if (selectedPath === false) return undefined;
+
+  const outputPath = selectedPath.toLowerCase().endsWith(".tsv")
+    ? selectedPath
+    : `${selectedPath}.tsv`;
+  await IOUtils.writeUTF8(outputPath, document.content, {
+    tmpPath: `${outputPath}.tmp`,
+  });
+  return outputPath;
+}
+
+export function buildAnkiTsv(input: { title: string; guideText: string }): {
+  fileName: string;
+  content: string;
+  cardCount: number;
+} {
   const rows = buildCards(input.title, input.guideText);
-  const tsv = [
-    "Front\tBack\tTags",
+  if (!rows.length) {
+    throw new Error("当前导读没有可导出的 Anki 卡片内容。");
+  }
+
+  const content = [
+    "#separator:Tab",
+    "#html:true",
+    "#tags column:3",
+    "#columns:Front\tBack\tTags",
     ...rows.map((row) => row.map(escapeTsv).join("\t")),
   ].join("\n");
   const safeTitle = input.title.replace(/[^\p{L}\p{N}]+/gu, "-").slice(0, 48);
-  return new PluginCache().writeTextFile(
-    `${safeTitle || "paper"}-anki.tsv`,
-    tsv,
-  );
+  return {
+    fileName: `${safeTitle || "paper"}-anki.tsv`,
+    content,
+    cardCount: rows.length,
+  };
 }
 
 function buildCards(title: string, guideText: string): string[][] {
   const paragraphs = guideText
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.replace(/\[\[ANCHOR:[^\]]+\]\]/g, "").trim())
-    .filter((paragraph) => paragraph.length > 20)
-    .slice(0, 40);
-
+    .filter((paragraph) => paragraph.length > 6 && !paragraph.startsWith("#"))
+    .filter((paragraph, index, values) => values.indexOf(paragraph) === index)
+    .slice(0, 100);
   return paragraphs.map((paragraph, index) => {
     const kind = classify(paragraph);
     const front =

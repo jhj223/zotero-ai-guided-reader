@@ -3,11 +3,16 @@ import {
   normalizeMinerUOutput,
   validateMinerUInputLimits,
 } from "../core/mineruNormalizer";
+import { describeMinerUAsset } from "../core/mineruAssets";
 import type { MinerUProgress, NormalizedMinerUOutput } from "../core/types";
-import type { MinerUSettings } from "./preferences";
+import { PluginCache } from "./cache";
+import type { ResolvedMinerUSettings } from "./preferences";
 
 const API_BASE = "https://mineru.net/api/v4";
 const MAX_POLLS = 240;
+const MAX_ASSET_COUNT = 100;
+const MAX_ASSET_BYTES = 10 * 1024 * 1024;
+const MAX_TOTAL_ASSET_BYTES = 50 * 1024 * 1024;
 
 export type ProgressCallback = (progress: MinerUProgress) => void;
 
@@ -34,7 +39,10 @@ interface ExtractResult {
 }
 
 export class MinerUClient {
-  constructor(private readonly settings: MinerUSettings) {}
+  constructor(
+    private readonly settings: ResolvedMinerUSettings,
+    private readonly cache = new PluginCache(),
+  ) {}
 
   async parseLocalPdf(input: {
     filePath: string;
@@ -72,7 +80,7 @@ export class MinerUClient {
 
     const zipUrl = await this.pollForZipUrl(batchId, input.onProgress);
     input.onProgress?.({ state: "done", message: "Downloading MinerU result" });
-    return this.downloadAndNormalizeZip(zipUrl);
+    return this.downloadAndNormalizeZip(zipUrl, input.attachmentKey);
   }
 
   private async createSignedUpload(input: {
@@ -156,6 +164,7 @@ export class MinerUClient {
 
   private async downloadAndNormalizeZip(
     zipUrl: string,
+    attachmentKey: string,
   ): Promise<NormalizedMinerUOutput> {
     const response = await fetch(zipUrl);
     if (!response.ok) {
@@ -170,6 +179,7 @@ export class MinerUClient {
       return file ? JSON.parse(await file.async("string")) : undefined;
     };
     const markdownFile = findZipFile(zip, ["full.md", ".md"]);
+    const assetMap = await this.extractAssets(zip, attachmentKey);
 
     return normalizeMinerUOutput({
       contentListV2: await readJson([
@@ -179,7 +189,46 @@ export class MinerUClient {
       contentList: await readJson(["_content_list.json", "content_list.json"]),
       middleJson: await readJson(["_middle.json", "middle.json"]),
       markdown: markdownFile ? await markdownFile.async("string") : undefined,
+      assetMap,
     });
+  }
+
+  private async extractAssets(
+    zip: JSZip,
+    attachmentKey: string,
+  ): Promise<Record<string, string>> {
+    const assetMap: Record<string, string> = {};
+    let count = 0;
+    let totalBytes = 0;
+
+    for (const file of Object.values(zip.files)) {
+      if (file.dir || count >= MAX_ASSET_COUNT) continue;
+      const descriptor = describeMinerUAsset(file.name);
+      if (!descriptor) continue;
+      const bytes = await file.async("uint8array");
+      if (bytes.byteLength > MAX_ASSET_BYTES) {
+        ztoolkit.log("Skipping oversized MinerU image asset", {
+          path: descriptor.zipPath,
+          bytes: bytes.byteLength,
+        });
+        continue;
+      }
+      if (totalBytes + bytes.byteLength > MAX_TOTAL_ASSET_BYTES) {
+        ztoolkit.log("MinerU image asset cache reached its size limit", {
+          attachmentKey,
+          totalBytes,
+        });
+        break;
+      }
+
+      await this.cache.writeAsset(attachmentKey, descriptor.storedName, bytes);
+      descriptor.aliases.forEach((alias) => {
+        assetMap[alias] = descriptor.storedName;
+      });
+      count += 1;
+      totalBytes += bytes.byteLength;
+    }
+    return assetMap;
   }
 
   private async request<T>(
