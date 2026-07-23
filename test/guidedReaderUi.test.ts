@@ -21,6 +21,10 @@ test("sidebar uses whole claims for navigation without page chips", async () => 
   assert.match(source, /semanticQuery=/);
   assert.doesNotMatch(source, /<ol className="zg-evidence-locations">/);
   assert.match(source, /role="list" className="zg-evidence-locations"/);
+  assert.match(
+    source,
+    /\.zg-evidence-locations \.zg-anchor-button \{[^}]*height: auto !important;/,
+  );
 });
 
 test("sidebar restores cache, supports collapse, renders rich content, and exposes Anki export", async () => {

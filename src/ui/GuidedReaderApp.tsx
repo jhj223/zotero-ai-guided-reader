@@ -638,7 +638,7 @@ const styles = `
 .zg-evidence-count { color: #52606d; font-size: 11px; margin-left: 6px; white-space: nowrap; }
 .zg-evidence-locations { border-left: 2px solid #c7d4e2; display: flex; flex-direction: column; gap: 6px; margin: 6px 0 2px 2px; min-width: 0; padding-left: 10px; }
 .zg-evidence-location { display: block; margin: 0; min-width: 0; }
-.zg-evidence-locations .zg-anchor-button { display: block; width: 100%; }
+.zg-evidence-locations .zg-anchor-button { display: block; height: auto !important; width: 100%; }
 .zg-evidence-page { color: #315f8c; display: block; font-size: 11px; font-weight: 650; }
 .zg-evidence-quote { color: #4b5563; display: block; font-size: 12px; line-height: 1.45; }
 .zg-guide { border-left: 3px solid #4c6f91; margin-top: 8px; padding: 4px 0 2px 10px; }
