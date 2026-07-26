@@ -1,0 +1,179 @@
+# 图表证据索引设计
+
+## 背景
+
+AI 带读当前会为普通文字论述保存逐字原文 `evidence`，并允许用户点击论述或证据列表返回 PDF。章节精读末尾也会集中展示本章节的公式、表格和图片卡片，但概览及精读中的具体论述没有明确标出它引用的是哪张图、哪张表或哪个公式。
+
+本设计让概览和章节精读中的图表相关回答直接携带可点击索引，同时保留章节末尾的完整图表卡片。文字证据与视觉证据分开建模和校验，避免为了支持图表定位而放宽现有逐字引文要求。
+
+## 已确认范围
+
+- 概览要点和章节精读要点都支持图、表、公式索引。
+- 索引显示为“图 2 · 第 5 页”“表 1 · 第 7 页”“公式 · 第 8 页”等可读标签。
+- 点击索引定位并高亮对应图表区域；无法精确高亮时降级到对应页面。
+- 章节精读末尾继续集中展示完整公式、表格和图片卡片。
+- 保存到 Zotero Note 时保留可点击的图表页码链接。
+- Anki 继续导出独立纯问答卡片，不增加 Zotero 跳转链接。
+- 现有 MinerU 解析结果中的图表类型、页码、bbox 和 rich content 是唯一定位来源。
+
+## 非目标
+
+- 不实现图内子图、曲线、数据点、表格单元格或公式子表达式级定位。
+- 不让模型决定页码、bbox、图表类型或最终显示标签。
+- 不把视觉索引扩展到 Anki。
+- 不更换 MinerU，不新增 PDF 版面解析器，也不改变 Zotero Reader 的现有定位降级链。
+- 不把章节中所有图表都错误地绑定到每条回答。
+
+## GitHub 参考结论
+
+公开实现提供了两类可组合的可靠模式：
+
+- `yilewang/llm-for-zotero` 将逐字引用与图表处理分开：直接引文使用可验证 quote anchor，图片使用裁剪图、caption 和 provenance，表格使用结构化文本及上下文。
+- `xiaoxuanli-a/zotero_agent_reader_plugin` 会独立核验模型返回的页码和逐字引文，无法唯一匹配时不会伪装成已验证引用。
+- `allenai/pdffigures2` 将图和表建模为带类型、名称、页码、图表 bbox、caption 和 caption bbox 的独立对象。
+- `opendataloader-project/opendataloader-pdf` 通过带 bbox 的结构化 JSON 支持来源引用。
+
+因此本项目采用独立视觉证据引用，而不是复用并放宽文字 `evidence`。
+
+## 数据模型
+
+新增最小持久结构：
+
+```ts
+export interface VisualEvidenceReference {
+  anchorId: string;
+}
+```
+
+在以下类型中加入可选的 `visualEvidence`：
+
+```ts
+export interface OutlineBullet {
+  claim: string;
+  anchorIds: string[];
+  evidence: EvidenceReference[];
+  visualEvidence?: VisualEvidenceReference[];
+}
+
+export interface SectionGuidePoint {
+  category: SectionGuideCategory;
+  text: string;
+  evidence: EvidenceReference[];
+  visualEvidence?: VisualEvidenceReference[];
+}
+```
+
+模型和缓存只保存 `anchorId`。类型、页码、bbox、caption、description、LaTeX、表格 HTML 和图片资源均从本地 `AnchorChunk` 派生，不接受模型复制的这些字段作为事实。
+
+## 生成协议
+
+概览和章节精读的 JSON 示例都加入 `visualEvidence`。提示词明确要求：
+
+1. 每条回答仍必须有 1 至 3 条可逐字校验的文字 `evidence`。
+2. 回答只要解释、比较或引用了图、表或公式，就必须额外返回对应的 `visualEvidence`。
+3. `visualEvidence.anchorId` 只能引用当前给定锚点中类型为 `equation`、`table` 或 `image` 的对象。
+4. 一条回答可关联多个直接相关图表，但不得加入仅因处于同一章节而无直接关系的图表。
+5. 图片只有 caption/description 而没有可核实视觉数据时，不得生成超出这些内容的结论。
+
+概览和精读使用相同协议，以保证两层内容都可以跳转。
+
+## 本地校验
+
+新增统一的视觉证据规范化函数，执行以下规则：
+
+- 输入必须是数组，元素必须只提供非空 `anchorId`。
+- `anchorId` 必须存在于当前本地锚点集合。
+- 对应锚点类型必须是 `equation`、`table` 或 `image`。
+- 以 `anchorId` 去重，每条回答最多保留 3 个视觉证据。
+- 文字 `evidence` 继续执行现有逐字 quote 校验；视觉证据不能替代文字证据。
+- 模型返回了图表引用但引用无效时，不保留该无效引用。
+- 回答文本命中明确视觉引用模式（例如“图 2”“表 1”“Figure 3”“Table 4”“如图”“由表”或“公式 (2)”），却没有任何有效视觉证据时，丢弃该回答，避免展示不可追溯的图表结论。普通词语中偶然出现的单个“图”或“表”不触发该规则。
+
+规范化后的 `anchorIds` 继续覆盖文字与视觉锚点，保证章节范围、缓存、Note 和后续精读都能取得相同来源。
+
+## 标签生成
+
+新增纯函数根据本地锚点生成索引标签：
+
+- `image`：优先从 caption/description 中提取“图 2”“Figure 2”“Fig. 2”等编号；失败时显示“图表”。
+- `table`：优先提取“表 1”“Table 1”等编号；失败时显示“表格”。
+- `equation`：优先提取已有公式编号；失败时显示“公式”。
+- 最终界面标签追加本地 `pageNumber`，例如“图 2 · 第 5 页”。
+
+UI 与 Zotero Note 共用该函数，避免同一锚点在不同输出中出现不同名称。
+
+## 界面行为
+
+### 概览
+
+概览要点保留现有文字证据交互，并在要点后追加独立视觉索引按钮。一个要点引用多个图表时按模型返回且经本地校验后的顺序显示多个索引。
+
+### 章节精读
+
+章节精读要点采用同样的视觉索引按钮。章节末尾的“公式与图表证据”区域继续存在，并从章节 `anchorIds`、概览 `visualEvidence` 和精读 `visualEvidence` 的并集中去重生成完整卡片。
+
+### 定位
+
+点击视觉索引复用现有 `openAnchor()`：
+
+1. 使用本地锚点页码和 bbox 定位。
+2. bbox 可用时持续高亮整个图表或公式区域。
+3. bbox 或 Reader 私有接口不可用时降级到对应 PDF 页面。
+4. 视觉定位不调用语义向量服务，也不尝试字符级 quote 匹配。
+
+## Zotero Note 与 Anki
+
+`sectionGuideToMarkdown()` 和概览导出文本会把视觉证据写成现有 `[[ANCHOR:...]]` 占位符。保存 Note 时：
+
+- 文字锚点继续显示页码链接。
+- 视觉锚点使用统一标签函数显示“图 2 · p.5”“表 1 · p.7”等链接。
+
+Anki TSV 构建器继续删除所有 anchor 占位符，因此导出的 Front、Back 和 Tags 仍是纯问答卡片，不包含 Zotero 跳转。
+
+## 缓存兼容
+
+提升 `GUIDE_CACHE_VERSION`，使没有 `visualEvidence` 的旧导读缓存失效并重新生成。MinerU 解析缓存版本保持不变，因为 v3 已保存图表类型、页码、bbox、rich content 和图片资源。
+
+缓存失效只影响 LLM 导读结果，不强制重新上传或解析 PDF。
+
+## 错误与降级
+
+- 模型没有返回任何有效视觉证据时，普通文字回答仍按现有规则显示；明确依赖图表但无有效索引的回答被丢弃。
+- caption 无法提取编号时显示类型级标签，不伪造编号。
+- 图像资源缺失时，章节末尾卡片仍显示 caption/description 和定位按钮。
+- bbox 缺失时仍可按页跳转。
+- 多个回答引用同一视觉锚点时，各回答保留自己的索引，章节末尾卡片只展示一次。
+
+## 测试策略
+
+### 单元测试
+
+- 概览和章节提示词包含 `visualEvidence` JSON 结构及强制关联规则。
+- 视觉证据规范化只接受已知的公式、表格和图片锚点。
+- 未知、文字类型、重复和超量视觉锚点被过滤。
+- 明确图表相关但无有效视觉证据的回答被拒绝。
+- 标签函数覆盖中英文图表编号、公式编号和无编号回退。
+- Markdown/Note 输出为视觉锚点生成正确标签与 PDF 链接。
+- Anki 继续移除所有 anchor 标记。
+- 旧 guide 缓存因版本提升失效。
+
+### 集成与实机验证
+
+- 运行完整测试、TypeScript 检查、lint 和生产 XPI 构建。
+- 安装构建后的 XPI，并核对安装文件与构建文件哈希。
+- 使用包含图片、表格和公式的真实 MinerU v3 缓存重新生成导读。
+- 验证概览和精读均显示正确索引。
+- 点击索引后验证目标页和 bbox 高亮。
+- 验证章节末尾完整卡片仍存在且不重复。
+- 保存 Zotero Note，验证视觉链接能打开正确 PDF 页。
+- 导出 Anki TSV，验证卡片中没有 anchor 标记或 Zotero 跳转链接。
+
+## 验收标准
+
+- 概览及精读中的每条图表相关回答都至少有一个经过本地校验的视觉索引。
+- 索引标签、页码和定位坐标全部来自本地 MinerU 锚点。
+- 点击索引能高亮对应图表区域，无法高亮时至少打开正确页面。
+- 现有逐字文字 evidence 校验没有被放宽。
+- 章节末尾完整图表卡片继续展示。
+- Zotero Note 保留图表跳转，Anki 保持纯问答。
+- 旧导读缓存自动失效，PDF 解析缓存无需重做。
