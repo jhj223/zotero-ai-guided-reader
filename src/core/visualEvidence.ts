@@ -1,11 +1,19 @@
 import type { AnchorChunk, VisualEvidenceReference } from "./types";
 
-const VISUAL_TYPES = new Set(["equation", "table", "image"]);
+type VisualAnchor = AnchorChunk & {
+  type: "equation" | "table" | "image";
+};
+
+const VISUAL_TYPES = new Set<AnchorChunk["type"]>([
+  "equation",
+  "table",
+  "image",
+]);
 const MAX_VISUAL_EVIDENCE = 3;
 
 export function isVisualAnchor(
   anchor: AnchorChunk | undefined,
-): anchor is AnchorChunk {
+): anchor is VisualAnchor {
   return Boolean(anchor && VISUAL_TYPES.has(anchor.type));
 }
 

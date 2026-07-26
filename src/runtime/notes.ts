@@ -3,6 +3,7 @@ import {
   buildZoteroOpenPdfLink,
 } from "../core/anchorMarkup";
 import type { AnchorChunk } from "../core/types";
+import { isVisualAnchor, visualEvidenceLabel } from "../core/visualEvidence";
 import { getOpenPdfLibraryTarget } from "./zoteroLinks";
 
 export async function saveGuideAsNote(input: {
@@ -40,7 +41,10 @@ function renderNoteHtml(input: {
           pageIndex: anchor.pageIndex,
           ...getOpenPdfLibraryTarget(input.attachment),
         });
-        return `<a href="${escapeHtml(href)}">p.${anchor.pageNumber}</a>`;
+        const label = isVisualAnchor(anchor)
+          ? `${visualEvidenceLabel(anchor)} · p.${anchor.pageNumber}`
+          : `p.${anchor.pageNumber}`;
+        return `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>`;
       })
       .join("");
     return `<p>${html}</p>`;

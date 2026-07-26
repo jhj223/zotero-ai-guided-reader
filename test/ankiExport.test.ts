@@ -28,6 +28,17 @@ test("rejects an empty Anki export instead of creating a header-only file", () =
   );
 });
 
+test("strips text and visual anchor placeholders from Anki cards", () => {
+  const output = buildAnkiTsv({
+    title: "Paper",
+    guideText:
+      "图表结果说明体系保持稳定。 [[ANCHOR:chunk_0001]] [[ANCHOR:figure_0001]]",
+  });
+
+  assert.doesNotMatch(output.content, /ANCHOR|zotero:\/\/open-pdf/);
+  assert.match(output.content, /图表结果说明体系保持稳定/);
+});
+
 test("writes the Anki TSV to the path selected by the save dialog", async () => {
   const runtime = globalThis as unknown as Record<string, unknown>;
   const previousToolkit = runtime.ztoolkit;
