@@ -25,6 +25,16 @@ const anchors: AnchorChunk[] = [
     text: "The dispersion remained stable in 7000 mg/L NaCl.",
     sectionPath: ["Results"],
   },
+  {
+    id: "figure_0001",
+    type: "image",
+    pageIndex: 4,
+    pageNumber: 5,
+    bbox: [100, 200, 900, 700],
+    text: "Figure 2. Viscosity response",
+    sectionPath: ["Results"],
+    richContent: { caption: "Figure 2. Viscosity response" },
+  },
 ];
 
 test("extractJsonObject parses fenced JSON from an LLM response", () => {
@@ -86,6 +96,70 @@ test("filterOutlineToKnownAnchors drops claims without a verified quote", () => 
       },
     ],
   });
+});
+
+test("keeps validated visual evidence and adds it to section scope", () => {
+  const outline = filterOutlineToKnownAnchors(
+    {
+      title: "Paper",
+      sections: [
+        {
+          title: "Results",
+          bullets: [
+            {
+              claim: "如图 2 所示，分散体保持稳定。",
+              anchorIds: [],
+              evidence: [
+                {
+                  anchorId: "chunk_0002",
+                  quote: "remained stable in 7000 mg/L NaCl",
+                },
+              ],
+              visualEvidence: [{ anchorId: "figure_0001" }],
+            },
+          ],
+        },
+      ],
+    },
+    anchors,
+  );
+
+  assert.deepEqual(outline.sections[0].bullets[0].visualEvidence, [
+    { anchorId: "figure_0001" },
+  ]);
+  assert.deepEqual(outline.sections[0].anchorIds, [
+    "chunk_0002",
+    "figure_0001",
+  ]);
+});
+
+test("drops explicit visual claims without a valid visual anchor", () => {
+  const outline = filterOutlineToKnownAnchors(
+    {
+      title: "Paper",
+      sections: [
+        {
+          title: "Results",
+          bullets: [
+            {
+              claim: "Figure 2 shows a monotonic response.",
+              anchorIds: [],
+              evidence: [
+                {
+                  anchorId: "chunk_0002",
+                  quote: "remained stable in 7000 mg/L NaCl",
+                },
+              ],
+              visualEvidence: [{ anchorId: "missing" }],
+            },
+          ],
+        },
+      ],
+    },
+    anchors,
+  );
+
+  assert.deepEqual(outline.sections, []);
 });
 
 test("normalizeSectionGuide keeps only unique points with verified evidence", () => {
@@ -155,6 +229,60 @@ test("normalizeSectionGuide keeps only unique points with verified evidence", ()
   });
 });
 
+test("keeps valid section visual evidence", () => {
+  const guide = normalizeSectionGuide(
+    {
+      title: "Results",
+      points: [
+        {
+          category: "fact",
+          text: "Figure 2 shows the reported response.",
+          evidence: [
+            {
+              anchorId: "chunk_0002",
+              quote: "remained stable in 7000 mg/L NaCl",
+            },
+          ],
+          visualEvidence: [{ anchorId: "figure_0001" }],
+        },
+      ],
+    },
+    anchors,
+    "Results",
+  );
+
+  assert.deepEqual(guide.points[0].visualEvidence, [
+    { anchorId: "figure_0001" },
+  ]);
+});
+
+test("rejects an explicit section visual claim without a valid visual anchor", () => {
+  assert.throws(
+    () =>
+      normalizeSectionGuide(
+        {
+          title: "Results",
+          points: [
+            {
+              category: "fact",
+              text: "Figure 2 shows the reported response.",
+              evidence: [
+                {
+                  anchorId: "chunk_0002",
+                  quote: "remained stable in 7000 mg/L NaCl",
+                },
+              ],
+              visualEvidence: [{ anchorId: "missing" }],
+            },
+          ],
+        },
+        anchors,
+        "Results",
+      ),
+    /traceable|quote|evidence/i,
+  );
+});
+
 test("normalizeSectionGuide rejects old anchor-only cache entries", () => {
   assert.throws(
     () =>
@@ -189,12 +317,13 @@ test("sectionGuideToMarkdown preserves a link anchor for every point", () => {
             quote: "reacted at 180 C for three hours",
           },
         ],
+        visualEvidence: [{ anchorId: "figure_0001" }],
       },
     ],
   });
 
   assert.match(
     markdown,
-    /The sample reacted for three hours\. \[\[ANCHOR:chunk_0001\]\]/,
+    /The sample reacted for three hours\. \[\[ANCHOR:chunk_0001\]\] \[\[ANCHOR:figure_0001\]\]/,
   );
 });

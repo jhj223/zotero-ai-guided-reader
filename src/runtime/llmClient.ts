@@ -165,14 +165,16 @@ ${JSON.stringify(compactAnchors)}
 ${JSON.stringify(annotations.slice(0, 50))}
 
 先生成 section 级结构化大纲，不展开全文。只输出以下 JSON：
-{"title":"中文导读标题","sections":[{"title":"章节名","anchorIds":["chunk_0001"],"bullets":[{"claim":"有证据支持的中文要点","evidence":[{"anchorId":"chunk_0001","quote":"从对应 text 连续逐字复制的原文"}]}]}]}
+{"title":"中文导读标题","sections":[{"title":"章节名","anchorIds":["chunk_0001"],"bullets":[{"claim":"有证据支持的中文要点","evidence":[{"anchorId":"chunk_0001","quote":"从对应 text 连续逐字复制的原文"}],"visualEvidence":[{"anchorId":"chunk_0042"}]}]}]}
 
 规则：
 1. 每个 bullet 必须有 1 至 3 条 evidence；同一论述若由多处正文共同支持或在多处重复出现，必须保留所有直接相关位置，不得只返回第一处；anchorId 只能使用给定 id。
 2. quote 必须从该锚点 text 连续逐字复制，不得翻译、改写、拼接或使用省略号。
-3. 每个 section 的 anchorIds 应覆盖该章节后续精读需要的关键正文、公式和图表锚点。
-4. 图片只有标题/描述而没有可核实数据时，不得推断图中结论。
-5. 只输出 JSON。`;
+3. 凡 claim 依据图、表或公式生成，除正文 evidence 外，visualEvidence 必须列出直接支持该论述的视觉锚点；其 anchorId 对应 type 必须是 equation、table 或 image。其他 claim 返回空数组。
+4. 不得把同章节但与当前 claim 无关的图、表或公式加入 visualEvidence。
+5. 每个 section 的 anchorIds 应覆盖该章节后续精读需要的关键正文、公式和图表锚点。
+6. 图片只有标题/描述而没有可核实数据时，不得推断图中结论。
+7. 只输出 JSON。`;
 }
 
 export function buildSectionPrompt(
@@ -186,14 +188,16 @@ export function buildSectionPrompt(
 可引用锚点：${JSON.stringify(scopedAnchors.map(compactAnchorForPrompt))}
 
 输出 JSON：
-{"title":"中文章节标题","points":[{"category":"fact | mechanism | judgment | caution","text":"一条可独立阅读的中文原子化要点，可保留 $...$ 或 $$...$$ LaTeX","evidence":[{"anchorId":"chunk_0001","quote":"从该锚点 text 连续逐字复制的原文"}]}]}
+{"title":"中文章节标题","points":[{"category":"fact | mechanism | judgment | caution","text":"一条可独立阅读的中文原子化要点，可保留 $...$ 或 $$...$$ LaTeX","evidence":[{"anchorId":"chunk_0001","quote":"从该锚点 text 连续逐字复制的原文"}],"visualEvidence":[{"anchorId":"chunk_0042"}]}]}
 
 规则：
 1. 生成 6 至 14 条；证据不足可以更少，不得凑数。
 2. 每条只表达一个事实、机制、作者判断或局限，并有 1 至 3 条 evidence；若多处原文共同支撑该论述，必须返回所有直接相关且不重复的位置，不得只取第一处。
 3. quote 必须保留源语言并逐字复制，不得翻译、改写、跨段拼接或使用省略号。
-4. 公式使用锚点 rich.latex 中的 LaTeX；表格仅解释给定 tableHtml；图表仅解释 caption/description 明示内容。
-5. 不得输出外部知识、建议、过渡段、模型推测或 JSON 之外的文字。`;
+4. 凡 text 依据图、表或公式生成，除正文 evidence 外，visualEvidence 必须列出直接支持该论述的视觉锚点；其 anchorId 对应 type 必须是 equation、table 或 image。其他 point 返回空数组。
+5. 不得把同章节但与当前 point 无关的图、表或公式加入 visualEvidence。
+6. 公式使用锚点 rich.latex 中的 LaTeX；表格仅解释给定 tableHtml；图表仅解释 caption/description 明示内容。
+7. 不得输出外部知识、建议、过渡段、模型推测或 JSON 之外的文字。`;
 }
 
 function compactAnchorForPrompt(anchor: AnchorChunk) {

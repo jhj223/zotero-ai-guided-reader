@@ -1,4 +1,8 @@
 import { quoteMatchesSource } from "./textQuote";
+import {
+  normalizeVisualEvidence,
+  requiresVisualEvidence,
+} from "./visualEvidence";
 import type {
   AnchorChunk,
   EvidenceReference,
@@ -57,11 +61,27 @@ export function filterOutlineToKnownAnchors(
           .map((bullet) => {
             const evidence = normalizeEvidence(bullet.evidence, anchorById);
             const claim = cleanGuideText(bullet.claim || "");
-            if (!claim || evidence.length === 0) return undefined;
+            const visualEvidence = normalizeVisualEvidence(
+              bullet.visualEvidence,
+              anchorById,
+            );
+            if (
+              !claim ||
+              evidence.length === 0 ||
+              (requiresVisualEvidence(claim) && visualEvidence.length === 0)
+            ) {
+              return undefined;
+            }
             return {
               claim,
-              anchorIds: evidence.map((item) => item.anchorId),
+              anchorIds: [
+                ...new Set([
+                  ...evidence.map((item) => item.anchorId),
+                  ...visualEvidence.map((item) => item.anchorId),
+                ]),
+              ],
               evidence,
+              ...(visualEvidence.length > 0 ? { visualEvidence } : {}),
             };
           })
           .filter((bullet): bullet is NonNullable<typeof bullet> =>
@@ -109,13 +129,27 @@ export function normalizeSectionGuide(
       .toLocaleLowerCase();
     if (seenTexts.has(dedupeKey)) continue;
     const evidence = normalizeEvidence(rawPoint.evidence, anchorById);
-    if (evidence.length === 0) continue;
+    const visualEvidence = normalizeVisualEvidence(
+      rawPoint.visualEvidence,
+      anchorById,
+    );
+    if (
+      evidence.length === 0 ||
+      (requiresVisualEvidence(text) && visualEvidence.length === 0)
+    ) {
+      continue;
+    }
     const category = GUIDE_CATEGORIES.has(
       rawPoint.category as SectionGuideCategory,
     )
       ? (rawPoint.category as SectionGuideCategory)
       : "fact";
-    points.push({ category, text, evidence });
+    points.push({
+      category,
+      text,
+      evidence,
+      ...(visualEvidence.length > 0 ? { visualEvidence } : {}),
+    });
     seenTexts.add(dedupeKey);
     if (points.length >= 18) break;
   }
@@ -145,12 +179,17 @@ export function sectionGuideToMarkdown(guide: SectionGuide): string {
       .filter((group) => group.points.length > 0)
       .flatMap((group) => [
         `### ${GUIDE_CATEGORY_LABELS[group.category]}`,
-        ...group.points.map(
-          (point) =>
-            `- ${point.text} ${point.evidence
-              .map((item) => `[[ANCHOR:${item.anchorId}]]`)
-              .join(" ")}`,
-        ),
+        ...group.points.map((point) => {
+          const anchorIds = [
+            ...new Set([
+              ...point.evidence.map((item) => item.anchorId),
+              ...(point.visualEvidence || []).map((item) => item.anchorId),
+            ]),
+          ];
+          return `- ${point.text} ${anchorIds
+            .map((anchorId) => `[[ANCHOR:${anchorId}]]`)
+            .join(" ")}`;
+        }),
       ]),
   ].join("\n\n");
 }
