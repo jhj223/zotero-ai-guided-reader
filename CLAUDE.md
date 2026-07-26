@@ -36,9 +36,15 @@
 - Do not create persistent annotations through
   `Zotero.Annotations.saveFromJSON()` for navigation.
 - Render formulas with LaTeX/KaTeX. Preserve readable tables and MinerU figure
-  assets/descriptions. Figure/table element-level navigation is outside v1.
+  assets/descriptions. Every overview or close-reading claim derived from a
+  figure, table, or equation must retain a validated whole-object visual anchor,
+  while complete visual cards remain at the end of the section. Subfigure,
+  curve, data-point, table-cell, and expression-part navigation remains out of
+  scope.
 - Keep close reading collapsible. Keep both Zotero Note saving and UTF-8 Anki
-  TSV export; Anki scheduling remains Anki's FSRS responsibility.
+  TSV export. Zotero Notes retain text and visual source links; Anki remains
+  plain question-and-answer content without Zotero links, and scheduling remains
+  Anki's FSRS responsibility.
 
 ## Source of truth and verification
 
