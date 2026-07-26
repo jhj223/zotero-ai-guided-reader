@@ -4,6 +4,7 @@ import { sectionGuideToMarkdown } from "../core/llmResponses";
 import { splitMathText, stripLatexToText } from "../core/mathText";
 import { describeMinerUProgress } from "../core/progressText";
 import { tableHtmlToRows } from "../core/tableHtml";
+import { isVisualAnchor, visualEvidenceLabel } from "../core/visualEvidence";
 import type {
   AnchorChunk,
   EvidenceReference,
@@ -14,6 +15,7 @@ import type {
   ReadingOutlineSection,
   SectionGuide,
   SectionGuideCategory,
+  VisualEvidenceReference,
 } from "../core/types";
 import { GuidedReadingService } from "../runtime/guidedReadingService";
 import { openAnchor } from "../runtime/highlight";
@@ -108,8 +110,16 @@ export function GuidedReaderApp({ item }: { item: Zotero.Item }) {
           if (guide) return sectionGuideToMarkdown(guide);
           return section.bullets
             .map((bullet) => {
-              const anchors = bullet.evidence
-                .map((evidence) => `[[ANCHOR:${evidence.anchorId}]]`)
+              const anchorIds = [
+                ...new Set([
+                  ...bullet.evidence.map((evidence) => evidence.anchorId),
+                  ...(bullet.visualEvidence || []).map(
+                    (evidence) => evidence.anchorId,
+                  ),
+                ]),
+              ];
+              const anchors = anchorIds
+                .map((anchorId) => `[[ANCHOR:${anchorId}]]`)
                 .join(" ");
               return `${section.title}：${bullet.claim}${anchors ? ` ${anchors}` : ""}`;
             })
@@ -227,6 +237,12 @@ export function GuidedReaderApp({ item }: { item: Zotero.Item }) {
                   >
                     <RichText text={bullet.claim} />
                   </EvidenceLinkedClaim>
+                  <VisualEvidenceLinks
+                    visualEvidence={bullet.visualEvidence || []}
+                    anchors={parsed?.anchors || []}
+                    pageSizes={parsed?.pageSizes}
+                    service={service}
+                  />
                 </li>
               ))}
             </ul>
@@ -243,6 +259,42 @@ export function GuidedReaderApp({ item }: { item: Zotero.Item }) {
         );
       })}
     </Shell>
+  );
+}
+
+function VisualEvidenceLinks({
+  visualEvidence,
+  anchors,
+  pageSizes,
+  service,
+}: {
+  visualEvidence: VisualEvidenceReference[];
+  anchors: AnchorChunk[];
+  pageSizes?: Record<number, PageSize>;
+  service: GuidedReadingService;
+}) {
+  const anchorsById = new Map(anchors.map((anchor) => [anchor.id, anchor]));
+  const visualAnchors = visualEvidence
+    .map((reference) => anchorsById.get(reference.anchorId))
+    .filter(isVisualAnchor);
+  if (visualAnchors.length === 0) return null;
+
+  const parsed = { anchors, pageSizes, sourceFiles: [] };
+  return (
+    <span className="zg-visual-evidence-links">
+      {visualAnchors.map((anchor) => (
+        <AnchorButton
+          key={anchor.id}
+          anchor={anchor}
+          parsed={parsed}
+          service={service}
+        >
+          <span className="zg-visual-evidence-link">
+            {visualEvidenceLabel(anchor)} · 第 {anchor.pageNumber} 页
+          </span>
+        </AnchorButton>
+      ))}
+    </span>
   );
 }
 
@@ -422,6 +474,9 @@ function GuideContent({
       ...guide.points.flatMap((point) =>
         point.evidence.map((evidence) => evidence.anchorId),
       ),
+      ...guide.points.flatMap((point) =>
+        (point.visualEvidence || []).map((evidence) => evidence.anchorId),
+      ),
     ]),
   ]
     .map((id) => anchorsById.get(id))
@@ -450,6 +505,12 @@ function GuideContent({
                   >
                     <RichText text={point.text} />
                   </EvidenceLinkedClaim>
+                  <VisualEvidenceLinks
+                    visualEvidence={point.visualEvidence || []}
+                    anchors={anchors}
+                    pageSizes={pageSizes}
+                    service={service}
+                  />
                 </li>
               );
             })}
@@ -460,7 +521,12 @@ function GuideContent({
         <div className="zg-visuals">
           <h4>公式与图表证据</h4>
           {visualAnchors.map((anchor) => (
-            <VisualEvidence key={anchor.id} anchor={anchor} service={service} />
+            <VisualEvidence
+              key={anchor.id}
+              anchor={anchor}
+              pageSizes={pageSizes}
+              service={service}
+            />
           ))}
         </div>
       )}
@@ -470,9 +536,11 @@ function GuideContent({
 
 function VisualEvidence({
   anchor,
+  pageSizes,
   service,
 }: {
   anchor: AnchorChunk;
+  pageSizes?: Record<number, PageSize>;
   service: GuidedReadingService;
 }) {
   const rich = anchor.richContent;
@@ -496,7 +564,11 @@ function VisualEvidence({
           />
         </figcaption>
       )}
-      <AnchorButton anchor={anchor} service={service}>
+      <AnchorButton
+        anchor={anchor}
+        parsed={{ anchors: [anchor], pageSizes, sourceFiles: [] }}
+        service={service}
+      >
         查看原文位置
       </AnchorButton>
     </figure>
@@ -641,6 +713,9 @@ const styles = `
 .zg-evidence-locations .zg-anchor-button { display: block; height: auto !important; width: 100%; }
 .zg-evidence-page { color: #315f8c; display: block; font-size: 11px; font-weight: 650; }
 .zg-evidence-quote { color: #4b5563; display: block; font-size: 12px; line-height: 1.45; }
+.zg-visual-evidence-links { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; max-width: 100%; vertical-align: baseline; }
+.zg-visual-evidence-links .zg-anchor-button { height: auto !important; }
+.zg-visual-evidence-link { background: #edf4fb; border: 1px solid #bfd1e3; border-radius: 999px; color: #315f8c; display: inline-block; font-size: 11px; line-height: 1.45; padding: 1px 6px; white-space: nowrap; }
 .zg-guide { border-left: 3px solid #4c6f91; margin-top: 8px; padding: 4px 0 2px 10px; }
 .zg-guide-title { color: #263746; font-weight: 650; margin: 2px 0 8px; }
 .zg-guide-group + .zg-guide-group { border-top: 1px solid #e0e5ea; margin-top: 10px; padding-top: 8px; }

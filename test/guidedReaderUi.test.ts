@@ -56,3 +56,36 @@ test("sidebar restores cache, supports collapse, renders rich content, and expos
   assert.match(source, />\s*导出 Anki\s*</);
   assert.doesNotMatch(source, /className="zg-more"/);
 });
+
+test("overview and close reading render whole-object visual indexes", async () => {
+  const source = await readFile(
+    new URL("../src/ui/GuidedReaderApp.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(source, /function VisualEvidenceLinks/);
+  assert.match(
+    source,
+    /visualEvidence=\{bullet\.visualEvidence \|\| \[\]\}[\s\S]{0,180}pageSizes=\{parsed\?\.pageSizes\}/,
+  );
+  assert.match(
+    source,
+    /visualEvidence=\{point\.visualEvidence \|\| \[\]\}[\s\S]{0,140}pageSizes=\{pageSizes\}/,
+  );
+  assert.match(source, /visualEvidenceLabel/);
+  assert.match(source, /zg-visual-evidence-links/);
+  assert.match(
+    source,
+    /\.\.\.\(bullet\.visualEvidence \|\| \[\]\)\.map\(\s*\(evidence\)/,
+  );
+  assert.match(
+    source,
+    /\(point\.visualEvidence \|\| \[\]\)\.map\(\s*\(evidence\) => evidence\.anchorId/,
+  );
+  assert.match(source, /<VisualEvidence[\s\S]*pageSizes=\{pageSizes\}/);
+  assert.match(source, /\.zg-visual-evidence-links \{[^}]*flex-wrap: wrap;/);
+  assert.match(
+    source,
+    /\.zg-visual-evidence-links \.zg-anchor-button \{[^}]*height: auto !important;/,
+  );
+});
