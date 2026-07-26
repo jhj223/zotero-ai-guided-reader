@@ -51,7 +51,7 @@ export function normalizeMinerUOutput(
     normalizeMiddleJson(raw.middleJson) ??
     [];
 
-  return {
+  return restoreRichContentFromMarkdown({
     anchors,
     markdown: raw.markdown,
     pageSizes: extractPageSizes(raw.middleJson),
@@ -61,7 +61,38 @@ export function normalizeMinerUOutput(
       raw.middleJson ? "middle.json" : "",
       raw.markdown ? "full.md" : "",
     ].filter(Boolean),
-  };
+  });
+}
+
+export function restoreRichContentFromMarkdown(
+  parsed: NormalizedMinerUOutput,
+): NormalizedMinerUOutput {
+  if (!parsed.markdown) return parsed;
+
+  const tablesByNumber = extractMarkdownTables(parsed.markdown);
+  if (tablesByNumber.size === 0) return parsed;
+
+  let changed = false;
+  const anchors = parsed.anchors.map((anchor) => {
+    if (anchor.type !== "table" || anchor.richContent?.tableHtml) {
+      return anchor;
+    }
+    const number = visualNumber(anchor.text, "table");
+    const tableHtml = number ? tablesByNumber.get(number) : undefined;
+    if (!tableHtml) return anchor;
+
+    changed = true;
+    return {
+      ...anchor,
+      richContent: {
+        ...anchor.richContent,
+        caption: anchor.richContent?.caption || anchor.text,
+        tableHtml,
+      },
+    };
+  });
+
+  return changed ? { ...parsed, anchors } : parsed;
 }
 
 function normalizeContentList(
@@ -469,6 +500,33 @@ function toBBox(value: unknown): BBox | undefined {
 function joinStringArray(value: unknown): string {
   if (!Array.isArray(value)) return "";
   return value.filter((entry) => typeof entry === "string").join("\n");
+}
+
+function extractMarkdownTables(markdown: string): Map<string, string> {
+  const tables = new Map<string, string>();
+  for (const match of markdown.matchAll(/<table\b[^>]*>[\s\S]*?<\/table>/giu)) {
+    const start = match.index ?? 0;
+    const context = markdown.slice(Math.max(0, start - 1000), start);
+    const captions = [
+      ...context.matchAll(
+        /(?:^|\n)\s*(?:表|Table)\s*([A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)[^\n]*/gimu,
+      ),
+    ];
+    const number = captions.at(-1)?.[1]?.toLocaleLowerCase();
+    if (number) tables.set(number, match[0]);
+  }
+  return tables;
+}
+
+function visualNumber(
+  source: string,
+  type: "table" | "image",
+): string | undefined {
+  const pattern =
+    type === "table"
+      ? /(?:表|Table)\s*([A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)/iu
+      : /(?:图|Figure|Fig\.?)\s*([A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)/iu;
+  return source.match(pattern)?.[1]?.toLocaleLowerCase();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

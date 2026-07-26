@@ -38,10 +38,12 @@ export function normalizeVisualEvidence(
     }
 
     const anchorId = record.anchorId.trim();
+    const anchor = anchorById.get(anchorId);
     if (
       !anchorId ||
       seen.has(anchorId) ||
-      !isVisualAnchor(anchorById.get(anchorId))
+      !isVisualAnchor(anchor) ||
+      !visualEvidenceNumber(anchor)
     ) {
       continue;
     }
@@ -61,32 +63,50 @@ export function requiresVisualEvidence(text: string): boolean {
 }
 
 export function visualEvidenceLabel(anchor: AnchorChunk): string {
-  const source = [
+  const number = visualEvidenceNumber(anchor);
+  if (anchor.type === "image") {
+    return number ? `图 ${number}` : "图表";
+  }
+  if (anchor.type === "table") {
+    return number ? `表 ${number}` : "表格";
+  }
+  return number ? `公式 ${number}` : "公式";
+}
+
+export function visualEvidenceNumber(anchor: AnchorChunk): string | undefined {
+  const sourceParts = [
     anchor.richContent?.caption,
     anchor.richContent?.description,
     anchor.text,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  ].filter((value): value is string => Boolean(value));
+  const source = sourceParts.join(" ");
 
   if (anchor.type === "image") {
+    const hasSubfigurePrefix = sourceParts.some((value) =>
+      /^\s*(?:\([A-Za-z0-9]+\)|（[A-Za-z0-9]+）)/u.test(value),
+    );
+    const hasStandaloneFigureCaption = sourceParts.some((value) =>
+      /^\s*(?:图|Figure|Fig\.?)\s*[A-Za-z0-9]/iu.test(value),
+    );
+    if (hasSubfigurePrefix && !hasStandaloneFigureCaption) {
+      return undefined;
+    }
     const match = source.match(
       /(?:图|Figure|Fig\.?)\s*([A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)?)/iu,
     );
-    return match ? `图 ${match[1]}` : "图表";
+    return match?.[1];
   }
 
   if (anchor.type === "table") {
     const match = source.match(
       /(?:表|Table)\s*([A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)?)/iu,
     );
-    return match ? `表 ${match[1]}` : "表格";
+    return match?.[1];
   }
 
   const explicit = source.match(
     /(?:公式|Equation|Eq\.?)\s*\(?([A-Za-z0-9.-]+)\)?/iu,
   );
   const trailing = source.match(/\(([0-9]+(?:\.[0-9]+)?)\)\s*$/u);
-  const number = explicit?.[1] || trailing?.[1];
-  return number ? `公式 ${number}` : "公式";
+  return explicit?.[1] || trailing?.[1];
 }

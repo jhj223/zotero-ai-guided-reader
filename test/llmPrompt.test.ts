@@ -27,6 +27,12 @@ test("outline prompt requires a verbatim quote for every visible claim", () => {
   assert.match(prompt, /不得只返回第一处/);
   assert.match(prompt, /visualEvidence.*必须|必须.*visualEvidence/i);
   assert.match(prompt, /equation.*table.*image/i);
+  assert.match(prompt, /编号.*证据|证据.*编号/);
+  assert.match(prompt, /比较|优选/);
+  assert.match(prompt, /表格锚点|table.*anchor/i);
+  assert.match(prompt, /无编号.*子图|子图.*无编号/);
+  assert.match(prompt, /最终.*(?:优选|选择).*(?:必须覆盖|不得省略)/);
+  assert.match(prompt, /不得笼统写.*(?:样品|配方|缓蚀剂)/);
 });
 
 test("section prompt requires contiguous source-language evidence", () => {
@@ -56,4 +62,10 @@ test("section prompt requires contiguous source-language evidence", () => {
   assert.match(prompt, /不得只取第一处/);
   assert.match(prompt, /visualEvidence.*必须|必须.*visualEvidence/i);
   assert.match(prompt, /equation.*table.*image/i);
+  assert.match(prompt, /编号.*证据|证据.*编号/);
+  assert.match(prompt, /比较|优选/);
+  assert.match(prompt, /表格锚点|table.*anchor/i);
+  assert.match(prompt, /无编号.*子图|子图.*无编号/);
+  assert.match(prompt, /最终.*(?:优选|选择).*(?:必须覆盖|不得省略)/);
+  assert.match(prompt, /不得笼统写.*(?:样品|配方|缓蚀剂)/);
 });

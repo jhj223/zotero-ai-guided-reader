@@ -38,9 +38,14 @@
 - Render formulas with LaTeX/KaTeX. Preserve readable tables and MinerU figure
   assets/descriptions. Every overview or close-reading claim derived from a
   figure, table, or equation must retain a validated whole-object visual anchor,
-  while complete visual cards remain at the end of the section. Subfigure,
-  curve, data-point, table-cell, and expression-part navigation remains out of
-  scope.
+  while complete visual cards remain at the end of the section. Reject
+  unnumbered subfigures as standalone indexes. A numbered sample or formulation
+  in a comparative or selection claim must be supported by the same source row
+  as its decisive metric; never combine a nearby sample image with an unrelated
+  numerical quote. When the source explicitly states a final selected sample,
+  formulation, or inhibitor, retain its source-validated identifier instead of
+  omitting the result or using a generic noun. Subfigure, curve, data-point,
+  table-cell, and expression-part navigation remains out of scope.
 - Keep close reading collapsible. Keep both Zotero Note saving and UTF-8 Anki
   TSV export. Zotero Notes retain text and visual source links; Anki remains
   plain question-and-answer content without Zotero links, and scheduling remains

@@ -47,6 +47,14 @@ const anchors: AnchorChunk[] = [
     sectionPath: ["Theory"],
     richContent: { latex: "y=ax+b", caption: "Equation (3)" },
   },
+  {
+    id: "image_subfigure",
+    type: "image",
+    pageIndex: 4,
+    pageNumber: 5,
+    text: "(b) 缓蚀剂1 图 6 腐蚀后状态图",
+    sectionPath: ["Results"],
+  },
 ];
 
 test("keeps unique known visual anchors and rejects invalid references", () => {
@@ -70,6 +78,16 @@ test("derives visual labels from local caption metadata", () => {
   assert.equal(visualEvidenceLabel(anchors[1]), "图 2");
   assert.equal(visualEvidenceLabel(anchors[2]), "表 1");
   assert.equal(visualEvidenceLabel(anchors[3]), "公式 3");
+});
+
+test("rejects subfigures with only a parent figure number as standalone indexes", () => {
+  assert.deepEqual(
+    normalizeVisualEvidence(
+      [{ anchorId: "image_subfigure" }],
+      new Map(anchors.map((anchor) => [anchor.id, anchor])),
+    ),
+    [],
+  );
 });
 
 test("detects explicit visual references without matching ordinary words", () => {

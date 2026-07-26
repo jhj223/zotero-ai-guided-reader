@@ -10,8 +10,15 @@ import {
   filterOutlineToKnownAnchors,
   normalizeSectionGuide,
 } from "../core/llmResponses";
+import { restoreRichContentFromMarkdown } from "../core/mineruNormalizer";
 import { resolveMinerUOptions } from "../core/mineruOptions";
-import { GUIDE_CACHE_VERSION, PluginCache, isUsableParseCache } from "./cache";
+import {
+  CACHE_VERSION,
+  GUIDE_CACHE_VERSION,
+  PluginCache,
+  isUsableParseCache,
+  type CachedParse,
+} from "./cache";
 import { exportAnkiTsv } from "./ankiExport";
 import { LLMClient } from "./llmClient";
 import { MinerUClient } from "./mineruClient";
@@ -48,7 +55,7 @@ export class GuidedReadingService {
     const attachment = await this.getAttachment();
     const parseCache = await this.cache.readParse(attachment.key);
     if (!isUsableParseCache(parseCache)) return { sections: {} };
-    this.parsed = parseCache.parsed;
+    this.parsed = await this.restoreCachedParse(parseCache, attachment);
 
     const guideCache = await this.cache.readGuide(attachment.key);
     if (guideCache?.version !== GUIDE_CACHE_VERSION) {
@@ -104,8 +111,7 @@ export class GuidedReadingService {
     if (!force) {
       const cached = await this.cache.readParse(attachment.key);
       if (isUsableParseCache(cached)) {
-        this.parsed = cached.parsed;
-        return cached.parsed;
+        return this.restoreCachedParse(cached, attachment);
       }
     }
 
@@ -255,5 +261,28 @@ export class GuidedReadingService {
 
   title(): string {
     return (this.item.getField("title") as string) || "Untitled paper";
+  }
+
+  private async restoreCachedParse(
+    cached: CachedParse,
+    attachment: Zotero.Item,
+  ): Promise<NormalizedMinerUOutput> {
+    const parsed = restoreRichContentFromMarkdown(cached.parsed);
+    if (cached.version !== CACHE_VERSION || parsed !== cached.parsed) {
+      try {
+        await this.cache.writeParse(
+          attachment.key,
+          parsed,
+          cached.itemVersion ?? attachment.version,
+        );
+      } catch (error) {
+        ztoolkit.log("Unable to persist upgraded parse cache", {
+          attachmentKey: attachment.key,
+          reason: String(error),
+        });
+      }
+    }
+    this.parsed = parsed;
+    return parsed;
   }
 }

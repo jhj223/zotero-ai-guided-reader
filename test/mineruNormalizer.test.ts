@@ -197,6 +197,34 @@ test("preserves MinerU formula, table, image, and bbox coordinate metadata", () 
   assert.match(normalized.anchors[2].text, /monotonic response curve/);
 });
 
+test("restores a missing table body from MinerU full markdown", () => {
+  const normalized = normalizeMinerUOutput({
+    contentList: [
+      {
+        type: "table",
+        table_caption: [
+          "表 3 缓蚀剂的缓蚀性能评价结果",
+          "Table 3 Evaluation results",
+        ],
+        bbox: [515, 135, 905, 250],
+        page_idx: 4,
+      },
+    ],
+    markdown: [
+      "表 3 缓蚀剂的缓蚀性能评价结果",
+      "Table 3 Evaluation results",
+      "",
+      "<table><tr><td>体系</td><td>温度/°C</td><td>腐蚀速率</td></tr>",
+      "<tr><td>缓蚀剂1</td><td>180</td><td>39.494</td></tr></table>",
+    ].join("\n"),
+  });
+
+  assert.match(
+    normalized.anchors[0].richContent?.tableHtml || "",
+    /缓蚀剂1[\s\S]*39\.494/,
+  );
+});
+
 test("marks middle-json bboxes as PDF page points", () => {
   const normalized = normalizeMinerUOutput({
     middleJson: {

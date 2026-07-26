@@ -174,7 +174,11 @@ ${JSON.stringify(annotations.slice(0, 50))}
 4. 不得把同章节但与当前 claim 无关的图、表或公式加入 visualEvidence。
 5. 每个 section 的 anchorIds 应覆盖该章节后续精读需要的关键正文、公式和图表锚点。
 6. 图片只有标题/描述而没有可核实数据时，不得推断图中结论。
-7. 只输出 JSON。`;
+7. claim 中出现的样品、配方或缓蚀剂编号，必须在该 claim 选择的直接证据中明确出现；不得根据相邻图片补写缺失编号。
+8. 比较、优选、最高/最低或是否达标的结论若来自表格数据，必须引用包含对应行和数值的 table 表格锚点；不得用相邻样品图片代替表格证据。
+9. visualEvidence 只引用正文中能识别出图、表或公式编号的完整对象；不得把无编号子图作为独立索引。
+10. 原文明确给出最终优选或选择结果时，必须覆盖且不得省略；必须写出直接证据支持的具体编号，不得笼统写“样品、配方或缓蚀剂”。
+11. 只输出 JSON。`;
 }
 
 export function buildSectionPrompt(
@@ -197,7 +201,11 @@ export function buildSectionPrompt(
 4. 凡 text 依据图、表或公式生成，除正文 evidence 外，visualEvidence 必须列出直接支持该论述的视觉锚点；其 anchorId 对应 type 必须是 equation、table 或 image。其他 point 返回空数组。
 5. 不得把同章节但与当前 point 无关的图、表或公式加入 visualEvidence。
 6. 公式使用锚点 rich.latex 中的 LaTeX；表格仅解释给定 tableHtml；图表仅解释 caption/description 明示内容。
-7. 不得输出外部知识、建议、过渡段、模型推测或 JSON 之外的文字。`;
+7. text 中出现的样品、配方或缓蚀剂编号，必须在该 point 选择的直接证据中明确出现；不得根据相邻图片补写缺失编号。
+8. 比较、优选、最高/最低或是否达标的结论若来自表格数据，必须引用包含对应行和数值的 table 表格锚点；不得用相邻样品图片代替表格证据。
+9. visualEvidence 只引用正文中能识别出图、表或公式编号的完整对象；不得把无编号子图作为独立索引。
+10. 原文明确给出最终优选或选择结果时，必须覆盖且不得省略；必须写出直接证据支持的具体编号，不得笼统写“样品、配方或缓蚀剂”。
+11. 不得输出外部知识、建议、过渡段、模型推测或 JSON 之外的文字。`;
 }
 
 function compactAnchorForPrompt(anchor: AnchorChunk) {

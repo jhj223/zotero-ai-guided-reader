@@ -7,8 +7,8 @@ import type {
 // v3: anchors retain coordinate-space metadata and MinerU rich content.
 export const CACHE_VERSION = 3;
 
-// v3: visual-derived claims also carry locally validated visual anchors.
-export const GUIDE_CACHE_VERSION = 3;
+// v7: supplement final selections omitted entirely by the model.
+export const GUIDE_CACHE_VERSION = 7;
 
 export interface CachedParse {
   version: number;
