@@ -80,10 +80,15 @@ export interface EvidenceReference {
   quote: string;
 }
 
+export interface VisualEvidenceReference {
+  anchorId: string;
+}
+
 export interface OutlineBullet {
   claim: string;
   anchorIds: string[];
   evidence: EvidenceReference[];
+  visualEvidence?: VisualEvidenceReference[];
 }
 
 export interface ReadingOutlineSection {
@@ -107,6 +112,7 @@ export interface SectionGuidePoint {
   category: SectionGuideCategory;
   text: string;
   evidence: EvidenceReference[];
+  visualEvidence?: VisualEvidenceReference[];
 }
 
 export interface SectionGuide {
