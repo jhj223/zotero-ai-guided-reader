@@ -12,10 +12,8 @@ permissions:
 
 jobs:
   create-release:
-    uses: zotero-plugin-dev/workflows/.github/workflows/release-plugin.yml@main
-    # You can customize any of the inputs here.
-    # If you omit an input, its default value will be used.
+    uses: zotero-plugin-dev/workflows/.github/workflows/release-plugin.yml@1539798bf7f71455f77e682b9ca49078249b34e7
     with:
-      build: "npm run build"
+      build: "npm ci --prefix services/licensing && npm run commercial:check && npm run license:test && npm run license:build && npm run licenses:audit && npm run build && npm run release:sbom && npm run release:checksums"
       release: "npm run release"
     secrets: inherit

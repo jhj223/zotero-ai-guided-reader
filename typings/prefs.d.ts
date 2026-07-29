@@ -26,6 +26,8 @@ declare namespace _ZoteroTypes {
       "semanticFetchedModels": string;
       "semanticBaseUrl": string;
       "temporaryHighlight": boolean;
+      "licenseDeviceId": string;
+      "licenseEntitlementToken": string;
     };
   }
 }

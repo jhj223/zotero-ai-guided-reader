@@ -8,31 +8,55 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Scan repository history for secrets
+        uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   lint:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_TOKEN: ${{ secrets.GitHub_TOKEN }}
     steps:
       - name: Setup JS
-        uses: zotero-plugin-dev/workflows/setup-js@main
+        uses: zotero-plugin-dev/workflows/setup-js@1539798bf7f71455f77e682b9ca49078249b34e7
       - name: Run Lint
         run: npm run lint:check
 
   build:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_TOKEN: ${{ secrets.GitHub_TOKEN }}
     steps:
       - name: Setup JS
-        uses: zotero-plugin-dev/workflows/setup-js@main
+        uses: zotero-plugin-dev/workflows/setup-js@1539798bf7f71455f77e682b9ca49078249b34e7
+      - name: Install licensing service
+        run: npm ci --prefix services/licensing
+      - name: Audit runtime licenses
+        run: npm run licenses:audit
+      - name: Audit production dependencies
+        run: |
+          npm audit --omit=dev --audit-level=high
+          npm audit --prefix services/licensing --omit=dev --audit-level=high
       - name: Run Build
-        run: npm run build
+        run: |
+          npm run license:build
+          npm run build
+          npm run release:sbom
+          npm run release:checksums
       - name: Upload build result
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: build-result
           path: .scaffold/build
+          if-no-files-found: error
 
   test:
     runs-on: ubuntu-latest
@@ -40,5 +64,10 @@ jobs:
       - build
     steps:
       - name: Setup JS
-        uses: zotero-plugin-dev/workflows/setup-js@main
-      - run: npm run test
+        uses: zotero-plugin-dev/workflows/setup-js@1539798bf7f71455f77e682b9ca49078249b34e7
+      - name: Install licensing service
+        run: npm ci --prefix services/licensing
+      - name: Run tests
+        run: |
+          npm run test
+          npm run license:test

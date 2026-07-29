@@ -14,3 +14,12 @@ updates:
         update-types:
           - "minor"
           - "patch"
+  - package-ecosystem: "npm"
+    directory: "/services/licensing"
+    schedule:
+      interval: "weekly"
+    groups:
+      all-non-major:
+        update-types:
+          - "minor"
+          - "patch"

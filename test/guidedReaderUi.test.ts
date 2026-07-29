@@ -51,7 +51,14 @@ test("sidebar restores cache, supports collapse, renders rich content, and expos
   assert.match(source, /VisualEvidence/);
   assert.match(source, /sectionAnchorIds=\{section\.anchorIds \|\| \[\]\}/);
   assert.match(source, /const generatedGuideText = outline/);
-  assert.match(source, /disabled=\{busy \|\| !generatedGuideText\}/);
+  assert.equal(
+    [
+      ...source.matchAll(
+        /disabled=\{busy \|\| !generatedGuideText \|\| !canUseCommercialActions\}/g,
+      ),
+    ].length,
+    2,
+  );
   assert.match(source, />\s*保存 Note\s*</);
   assert.match(source, />\s*导出 Anki\s*</);
   assert.doesNotMatch(source, /className="zg-more"/);

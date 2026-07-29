@@ -17,3 +17,5 @@ pref("semanticCustomModel", "");
 pref("semanticFetchedModels", "");
 pref("semanticBaseUrl", "");
 pref("temporaryHighlight", true);
+pref("licenseDeviceId", "");
+pref("licenseEntitlementToken", "");

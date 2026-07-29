@@ -5,20 +5,20 @@
   "description": "Zotero 9 guided AI reading plugin with MinerU-grounded PDF anchors",
   "config": {
     "addonName": "Zotero AI Guided Reader",
-    "addonID": "zotero-ai-guided-reader@local",
+    "addonID": "zotero-ai-guided-reader@jhj223",
     "addonRef": "zoteroaiguidedreader",
     "addonInstance": "ZoteroAIGuidedReader",
     "prefsPrefix": "extensions.zotero.zoteroaiguidedreader"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/local/zotero-ai-guided-reader.git"
+    "url": "git+https://github.com/jhj223/zotero-ai-guided-reader.git"
   },
-  "author": "local",
+  "author": "jhj223",
   "bugs": {
-    "url": "https://github.com/local/zotero-ai-guided-reader/issues"
+    "url": "https://github.com/jhj223/zotero-ai-guided-reader/issues"
   },
-  "homepage": "https://github.com/local/zotero-ai-guided-reader#readme",
+  "homepage": "https://github.com/jhj223/zotero-ai-guided-reader#readme",
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "start": "zotero-plugin serve",
@@ -28,6 +28,14 @@
     "release": "zotero-plugin release",
     "test": "tsx --test \"test/**/*.test.ts\"",
     "test:zotero": "zotero-plugin test",
+    "license:dev": "npm --prefix services/licensing run dev",
+    "license:test": "npm --prefix services/licensing test",
+    "license:build": "npm --prefix services/licensing run build",
+    "license:keys": "node scripts/generate-license-keys.mjs",
+    "licenses:audit": "node scripts/audit-runtime-licenses.mjs",
+    "commercial:check": "node scripts/assert-commercial-release-ready.mjs",
+    "release:sbom": "node scripts/create-release-sbom.mjs",
+    "release:checksums": "node scripts/create-release-checksums.mjs",
     "update-deps": "npm update --save"
   },
   "dependencies": {
@@ -42,13 +50,16 @@
     "@types/node": "^24.10.0",
     "@types/react": "^19.2.8",
     "@types/react-dom": "^19.2.3",
-    "@zotero-plugin/eslint-config": "^0.6.7",
-    "eslint": "^9.39.2",
+    "@zotero-plugin/eslint-config": "^0.6.10",
+    "eslint": "^10.0.3",
     "prettier": "^3.7.4",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "zotero-plugin-scaffold": "^0.8.2",
+    "zotero-plugin-scaffold": "^0.8.8",
     "zotero-types": "^4.1.0-beta.4"
+  },
+  "overrides": {
+    "adm-zip": "0.6.0"
   },
   "prettier": {
     "printWidth": 80,

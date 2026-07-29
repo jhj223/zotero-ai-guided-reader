@@ -21,6 +21,7 @@ import {
 } from "./cache";
 import { exportAnkiTsv } from "./ankiExport";
 import { LLMClient } from "./llmClient";
+import { getLicenseManager } from "./licenseManager";
 import { MinerUClient } from "./mineruClient";
 import { saveGuideAsNote } from "./notes";
 import { readMinerUSettings, readProviderSettings } from "./preferences";
@@ -169,6 +170,7 @@ export class GuidedReadingService {
       cached?.version === GUIDE_CACHE_VERSION ? cached : undefined;
     if (!force && currentCache?.outline) return currentCache.outline;
 
+    await getLicenseManager().requirePro();
     const parsed = await this.ensureParsed();
     const outline = await new LLMClient(readProviderSettings()).generateOutline(
       {
@@ -214,6 +216,7 @@ export class GuidedReadingService {
       }
     }
 
+    await getLicenseManager().requirePro();
     const guide = await new LLMClient(
       readProviderSettings(),
     ).generateSectionGuide({
@@ -236,6 +239,7 @@ export class GuidedReadingService {
   }
 
   async saveNote(markdown: string): Promise<number> {
+    await getLicenseManager().requirePro();
     const attachment = await this.getAttachment();
     const parsed = await this.ensureParsed();
     const note = await saveGuideAsNote({
@@ -249,6 +253,7 @@ export class GuidedReadingService {
   }
 
   async exportAnki(markdown: string): Promise<string | undefined> {
+    await getLicenseManager().requirePro();
     return exportAnkiTsv({
       title: this.title(),
       guideText: markdown,

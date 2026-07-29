@@ -1,0 +1,15 @@
+{
+  "licenseServerUrl": "https://license.example.com",
+  "licenseIssuer": "https://license.example.com",
+  "licenseAudience": "zotero-ai-guided-reader",
+  "licensePublicKeys": {
+    "license-key-2026": {
+      "kty": "RSA",
+      "n": "replace-with-public-jwk-modulus",
+      "e": "AQAB",
+      "alg": "RS256",
+      "ext": true,
+      "key_ops": ["verify"]
+    }
+  }
+}

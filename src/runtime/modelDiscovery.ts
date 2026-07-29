@@ -52,6 +52,7 @@ export async function fetchLlmModels(
   } catch (error) {
     throw new Error(
       `无法连接 ${provider.label}：${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 
@@ -72,8 +73,10 @@ export async function fetchLlmModels(
   let payload: unknown;
   try {
     payload = await response.json();
-  } catch {
-    throw new Error(`${provider.label} 返回的模型列表不是有效 JSON。`);
+  } catch (error) {
+    throw new Error(`${provider.label} 返回的模型列表不是有效 JSON。`, {
+      cause: error,
+    });
   }
   const models = extractModelIds(payload);
   if (!models.length) {
@@ -119,6 +122,7 @@ export async function fetchSemanticModels(
   } catch (error) {
     throw new Error(
       `无法连接 ${provider.label}：${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 

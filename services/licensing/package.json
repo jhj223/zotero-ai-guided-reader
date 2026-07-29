@@ -1,0 +1,25 @@
+{
+  "name": "zotero-ai-guided-reader-licensing",
+  "version": "0.1.0",
+  "description": "Licensing and WeChat Native payment service for Zotero AI Guided Reader",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "scripts": {
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json",
+    "dev": "tsx src/main.ts",
+    "test": "tsc -p tsconfig.test.json && tsx --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/qrcode": "^1.5.5",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
