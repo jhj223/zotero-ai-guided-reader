@@ -3,6 +3,7 @@
 
 # Node.js
 node_modules
+.worktrees/
 pnpm-lock.yaml
 yarn.lock
 
