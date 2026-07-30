@@ -10,6 +10,7 @@ import type { LicensingService, PaidPlanId } from "./domain.js";
 import type { EntitlementSigner } from "./entitlements.js";
 import type { PaymentProvider } from "./payments/provider.js";
 import type { SandboxPaymentProvider } from "./payments/sandbox.js";
+import type { StaticQrBridge } from "./payments/staticQrBridge.js";
 import type { WechatWebhookProcessor } from "./payments/wechatWebhook.js";
 import { FixedWindowRateLimiter } from "./rateLimit.js";
 
@@ -22,6 +23,7 @@ export interface LicensingServerDependencies {
   signer: EntitlementSigner;
   paymentProvider: PaymentProvider;
   sandboxPaymentProvider?: SandboxPaymentProvider;
+  staticQrBridge?: StaticQrBridge;
   webhookProcessor?: WechatWebhookProcessor;
   sourceUrl: string;
   now?: () => number;
@@ -40,6 +42,12 @@ class ApiError extends Error {
 export function createLicensingServer(
   dependencies: LicensingServerDependencies,
 ) {
+  if (
+    dependencies.paymentProvider.kind === "wechat-static-qr" &&
+    !dependencies.staticQrBridge
+  ) {
+    throw new Error("Static QR payments require a merchant receipt bridge.");
+  }
   const now = dependencies.now ?? Date.now;
   const processPepper = randomBytes(32);
   const limiters = {
@@ -70,6 +78,11 @@ export function createLicensingServer(
     }),
     refreshes: new FixedWindowRateLimiter({
       limit: 30,
+      windowMs: 5 * 60 * 1000,
+      now,
+    }),
+    merchantRequests: new FixedWindowRateLimiter({
+      limit: 300,
       windowMs: 5 * 60 * 1000,
       now,
     }),
@@ -114,6 +127,7 @@ async function handleRequest(
       ordersByDevice: FixedWindowRateLimiter;
       polls: FixedWindowRateLimiter;
       refreshes: FixedWindowRateLimiter;
+      merchantRequests: FixedWindowRateLimiter;
     };
   },
 ): Promise<void> {
@@ -135,9 +149,20 @@ async function handleRequest(
   }
 
   if (method === "GET" && url.pathname === "/v1/catalog") {
+    const paymentAvailability =
+      dependencies.paymentProvider.kind === "wechat-static-qr"
+        ? dependencies.staticQrBridge?.availability()
+        : { available: true, reason: null };
     sendJson(response, 200, {
       trialDays: 7,
       plans: dependencies.licensing.catalog(),
+      payment: {
+        provider: dependencies.paymentProvider.kind,
+        available: paymentAvailability?.available ?? false,
+        reason: paymentAvailability
+          ? paymentAvailability.reason
+          : "PAYMENT_WATCHER_OFFLINE",
+      },
     });
     return;
   }
@@ -192,7 +217,21 @@ async function handleRequest(
       runtime.limiters.ordersByDevice,
       requestIdentity(request, deviceId, runtime.processPepper),
     );
-    const order = dependencies.licensing.createOrder(deviceId, planId);
+    if (dependencies.paymentProvider.kind === "wechat-static-qr") {
+      const availability = dependencies.staticQrBridge?.availability();
+      if (!availability?.available) {
+        throw new ApiError(
+          503,
+          "PAYMENT_WATCHER_OFFLINE",
+          "自动到账服务暂不可用，请稍后再试。",
+        );
+      }
+    }
+    const order = dependencies.licensing.createOrder(
+      deviceId,
+      planId,
+      dependencies.paymentProvider.kind,
+    );
     const payment = await dependencies.paymentProvider.createPayment({
       orderId: order.id,
       amountFen: order.amountFen,
@@ -215,9 +254,57 @@ async function handleRequest(
       pollToken: order.pollToken,
       status: order.status,
       planId: order.planId,
+      baseAmountFen: order.baseAmountFen,
       amountFen: order.amountFen,
       expiresAt: new Date(order.expiresAt).toISOString(),
       qrDataUrl,
+    });
+    return;
+  }
+
+  if (
+    method === "POST" &&
+    url.pathname === "/v1/merchant/heartbeat" &&
+    dependencies.staticQrBridge
+  ) {
+    enforceLimit(
+      response,
+      runtime.limiters.merchantRequests,
+      requestSourceIdentity(request, runtime.processPepper),
+    );
+    const rawBody = await readJsonBody(request, MAX_JSON_BYTES);
+    mapMerchantError(() =>
+      dependencies.staticQrBridge?.processHeartbeat(
+        new Headers(flattenHeaders(request)),
+        rawBody,
+      ),
+    );
+    sendJson(response, 200, { status: "ok" });
+    return;
+  }
+
+  if (
+    method === "POST" &&
+    url.pathname === "/v1/merchant/receipts" &&
+    dependencies.staticQrBridge
+  ) {
+    enforceLimit(
+      response,
+      runtime.limiters.merchantRequests,
+      requestSourceIdentity(request, runtime.processPepper),
+    );
+    const rawBody = await readJsonBody(request, MAX_JSON_BYTES);
+    const result = mapMerchantError(() =>
+      dependencies.staticQrBridge?.processReceipt(
+        new Headers(flattenHeaders(request)),
+        rawBody,
+      ),
+    );
+    if (!result) throw new Error("MERCHANT_RECEIPT_RESULT_MISSING");
+    sendJson(response, 202, {
+      accepted: true,
+      status: result.status,
+      replay: result.isReplay,
     });
     return;
   }
@@ -432,6 +519,24 @@ async function readStrictJson(
   return body;
 }
 
+async function readJsonBody(
+  request: IncomingMessage,
+  maxBytes: number,
+): Promise<string> {
+  const mediaType = String(request.headers["content-type"] || "")
+    .split(";", 1)[0]
+    .trim()
+    .toLowerCase();
+  if (mediaType !== "application/json") {
+    throw new ApiError(
+      415,
+      "UNSUPPORTED_MEDIA_TYPE",
+      "请求必须使用 application/json。",
+    );
+  }
+  return readRawBody(request, maxBytes);
+}
+
 async function readRawBody(
   request: IncomingMessage,
   maxBytes: number,
@@ -565,6 +670,32 @@ function validatePaymentCodeUrl(value: string): string {
     throw new Error("PAYMENT_PROVIDER_INVALID_CODE_URL");
   }
   return url.toString();
+}
+
+function mapMerchantError<T>(operation: () => T): T {
+  try {
+    return operation();
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "";
+    if (code === "MERCHANT_SIGNATURE_INVALID") {
+      throw new ApiError(401, "MERCHANT_AUTH_INVALID", "商户监听器认证失败。");
+    }
+    if (
+      code === "RECEIPT_NONCE_REPLAY" ||
+      code === "RECEIPT_EVENT_REPLAY_MISMATCH"
+    ) {
+      throw new ApiError(409, "MERCHANT_EVENT_REPLAYED", "收款事件已处理。");
+    }
+    if (
+      code === "INVALID_HEARTBEAT_EVENT" ||
+      code === "INVALID_RECEIPT_EVENT" ||
+      code === "INVALID_MERCHANT_JSON" ||
+      code === "INVALID_MERCHANT_EVENT_FIELDS"
+    ) {
+      throw new ApiError(422, "MERCHANT_EVENT_INVALID", "收款事件无效。");
+    }
+    throw error;
+  }
 }
 
 function flattenHeaders(request: IncomingMessage): Record<string, string> {

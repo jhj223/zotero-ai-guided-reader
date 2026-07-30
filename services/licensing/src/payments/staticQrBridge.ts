@@ -1,4 +1,10 @@
-import { createHash, verify, type KeyLike } from "node:crypto";
+import {
+  createHash,
+  createPublicKey,
+  KeyObject,
+  verify,
+  type KeyLike,
+} from "node:crypto";
 import type {
   StaticQrReceiptInput,
   StaticQrReceiptResult,
@@ -37,6 +43,17 @@ export class StaticQrBridge {
   ) {
     if (dependencies.watcherPublicKeys.size === 0) {
       throw new Error("At least one watcher public key is required.");
+    }
+    for (const [keyId, publicKey] of dependencies.watcherPublicKeys) {
+      const normalizedKey =
+        publicKey instanceof KeyObject ? publicKey : createPublicKey(publicKey);
+      if (
+        !KEY_ID_PATTERN.test(keyId) ||
+        normalizedKey.type !== "public" ||
+        normalizedKey.asymmetricKeyType !== "ed25519"
+      ) {
+        throw new Error("Watcher public keys must be Ed25519 keys.");
+      }
     }
   }
 

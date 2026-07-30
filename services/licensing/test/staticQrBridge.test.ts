@@ -143,6 +143,32 @@ test("merchant bridge requires a fresh healthy signed heartbeat", () => {
   }
 });
 
+test("merchant bridge rejects non-Ed25519 watcher keys at startup", () => {
+  const database = new DatabaseSync(":memory:");
+  const store = new LicensingStore(database);
+  let sequence = 0;
+  const licensing = new LicensingService({
+    store,
+    plans: DEFAULT_PLANS,
+    now: () => START_TIME,
+    randomId: (prefix) => `${prefix}_wrong_key_${++sequence}`,
+  });
+  const rsaKeys = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  try {
+    assert.throws(
+      () =>
+        new StaticQrBridge({
+          store,
+          licensing,
+          watcherPublicKeys: new Map([["merchant-pc-01", rsaKeys.publicKey]]),
+        }),
+      /Ed25519/,
+    );
+  } finally {
+    database.close();
+  }
+});
+
 test("merchant bridge rejects tampered, stale, and path-replayed requests", () => {
   const { bridge, database, keys } = setup();
   try {

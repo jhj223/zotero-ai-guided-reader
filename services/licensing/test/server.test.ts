@@ -79,6 +79,11 @@ test("serves a stable catalog and security headers", async () => {
     assert.deepEqual(await response.json(), {
       trialDays: 7,
       plans: DEFAULT_PLANS,
+      payment: {
+        provider: "wechat-native",
+        available: true,
+        reason: null,
+      },
     });
   } finally {
     server.close();

@@ -16,6 +16,7 @@ import {
   StaticQrPaymentProvider,
   loadStaticQrDataUrl,
 } from "./payments/staticQr.js";
+import { StaticQrBridge } from "./payments/staticQrBridge.js";
 import {
   WechatNativeProvider,
   type DirectWechatNativeConfig,
@@ -71,6 +72,7 @@ const signer = new EntitlementSigner(
 );
 
 let sandboxPaymentProvider: SandboxPaymentProvider | undefined;
+let staticQrBridge: StaticQrBridge | undefined;
 let webhookProcessor: WechatWebhookProcessor | undefined;
 const paymentProvider =
   config.paymentProvider === "sandbox"
@@ -79,9 +81,21 @@ const paymentProvider =
         config.sandboxSecret,
       ))
     : config.paymentProvider === "wechat-static-qr"
-      ? new StaticQrPaymentProvider(
-          loadStaticQrDataUrl(resolve(config.staticQr.imagePath)),
-        )
+      ? (() => {
+          const watcherPublicKeys = new Map<string, KeyLike>(
+            Object.entries(config.staticQr.watcherPublicKeyPaths).map(
+              ([keyId, path]) => [keyId, readFileSync(resolve(path), "utf8")],
+            ),
+          );
+          staticQrBridge = new StaticQrBridge({
+            store,
+            licensing,
+            watcherPublicKeys,
+          });
+          return new StaticQrPaymentProvider(
+            loadStaticQrDataUrl(resolve(config.staticQr.imagePath)),
+          );
+        })()
       : (() => {
           const platformPublicKeys = new Map<string, KeyLike>(
             Object.entries(config.wechat.platformKeyPaths).map(
@@ -118,6 +132,7 @@ const server = createLicensingServer({
   signer,
   paymentProvider,
   sandboxPaymentProvider,
+  staticQrBridge,
   webhookProcessor,
   sourceUrl: config.sourceUrl,
 });
