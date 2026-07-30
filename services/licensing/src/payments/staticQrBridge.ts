@@ -18,6 +18,7 @@ const HEARTBEAT_SCHEMA = "wechat-commercial-heartbeat/v1";
 const RECEIPT_SCHEMA = "wechat-commercial-receipt/v1";
 const MAX_CLOCK_SKEW_SECONDS = 5 * 60;
 const WATCHER_STALE_MS = 120 * 1000;
+const NONCE_RETENTION_MS = 10 * 60 * 1000;
 const KEY_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const NONCE_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
 const SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{80,128}$/;
@@ -94,6 +95,8 @@ export class StaticQrBridge {
       state: body.state,
       outboxPending: body.outboxPending,
       receivedAt: this.runtime.now(),
+      nonceHash: verified.nonceHash,
+      nonceRetentionMs: NONCE_RETENTION_MS,
     });
   }
 

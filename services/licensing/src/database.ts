@@ -269,25 +269,35 @@ export class LicensingStore {
     state: "healthy" | "parser_paused" | "wechat_offline";
     outboxPending: number;
     receivedAt: number;
+    nonceHash: string;
+    nonceRetentionMs: number;
   }): void {
-    this.database
-      .prepare(
-        `INSERT INTO watcher_status
-           (key_id, watcher_version, state, outbox_pending, last_seen_at)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(key_id) DO UPDATE SET
-           watcher_version = excluded.watcher_version,
-           state = excluded.state,
-           outbox_pending = excluded.outbox_pending,
-           last_seen_at = excluded.last_seen_at`,
-      )
-      .run(
+    this.inTransaction(() => {
+      this.reserveReceiptNonce(
         input.keyId,
-        input.watcherVersion,
-        input.state,
-        input.outboxPending,
+        input.nonceHash,
         input.receivedAt,
+        input.nonceRetentionMs,
       );
+      this.database
+        .prepare(
+          `INSERT INTO watcher_status
+             (key_id, watcher_version, state, outbox_pending, last_seen_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(key_id) DO UPDATE SET
+             watcher_version = excluded.watcher_version,
+             state = excluded.state,
+             outbox_pending = excluded.outbox_pending,
+             last_seen_at = excluded.last_seen_at`,
+        )
+        .run(
+          input.keyId,
+          input.watcherVersion,
+          input.state,
+          input.outboxPending,
+          input.receivedAt,
+        );
+    });
   }
 
   hasHealthyWatcher(currentTime: number, staleAfterMs: number): boolean {
@@ -312,19 +322,12 @@ export class LicensingStore {
     },
   ): StaticQrReceiptResult {
     return this.inTransaction(() => {
-      this.database
-        .prepare("DELETE FROM receipt_nonces WHERE expires_at <= ?")
-        .run(receivedAt);
-      const nonceInsert = this.database
-        .prepare(
-          `INSERT OR IGNORE INTO receipt_nonces
-             (key_id, nonce_hash, expires_at)
-           VALUES (?, ?, ?)`,
-        )
-        .run(input.keyId, nonceHash, receivedAt + options.nonceRetentionMs);
-      if (Number(nonceInsert.changes) === 0) {
-        throw new Error("RECEIPT_NONCE_REPLAY");
-      }
+      this.reserveReceiptNonce(
+        input.keyId,
+        nonceHash,
+        receivedAt,
+        options.nonceRetentionMs,
+      );
 
       const existing = this.database
         .prepare("SELECT * FROM receipt_events WHERE event_id = ?")
@@ -497,6 +500,27 @@ export class LicensingStore {
     this.database
       .prepare("INSERT OR IGNORE INTO devices (id, created_at) VALUES (?, ?)")
       .run(deviceId, createdAt);
+  }
+
+  private reserveReceiptNonce(
+    keyId: string,
+    nonceHash: string,
+    receivedAt: number,
+    retentionMs: number,
+  ): void {
+    this.database
+      .prepare("DELETE FROM receipt_nonces WHERE expires_at <= ?")
+      .run(receivedAt);
+    const nonceInsert = this.database
+      .prepare(
+        `INSERT OR IGNORE INTO receipt_nonces
+           (key_id, nonce_hash, expires_at)
+         VALUES (?, ?, ?)`,
+      )
+      .run(keyId, nonceHash, receivedAt + retentionMs);
+    if (Number(nonceInsert.changes) === 0) {
+      throw new Error("RECEIPT_NONCE_REPLAY");
+    }
   }
 
   private replayedReceiptResult(row: DatabaseRow): StaticQrReceiptResult {

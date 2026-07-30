@@ -335,7 +335,9 @@ function validateOrder(value: unknown): LicenseOrder {
     !validIsoDate(object.expiresAt) ||
     typeof object.qrDataUrl !== "string" ||
     object.qrDataUrl.length > MAX_RESPONSE_BYTES ||
-    !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(object.qrDataUrl)
+    !/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/.test(
+      object.qrDataUrl,
+    )
   ) {
     throw invalidResponse();
   }

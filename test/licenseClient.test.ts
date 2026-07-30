@@ -60,6 +60,26 @@ test("creates an order without sending a client-controlled price", async () => {
   });
 });
 
+test("accepts a configured JPEG merchant QR image", async () => {
+  const client = new LicenseClient({
+    baseUrl: "https://license.example.com",
+    clientVersion: "0.1.0",
+    fetchImpl: async () =>
+      jsonResponse(201, {
+        orderId: "order_123456",
+        pollToken: "poll_12345678",
+        status: "pending",
+        planId: "pro_monthly",
+        amountFen: 1990,
+        expiresAt: "2026-07-29T12:15:00.000Z",
+        qrDataUrl: "data:image/jpeg;base64,/9j/4AAQ",
+      }),
+  });
+
+  const order = await client.createOrder("device-123", "pro_monthly");
+  assert.equal(order.qrDataUrl, "data:image/jpeg;base64,/9j/4AAQ");
+});
+
 test("polls with the order capability in an Authorization header", async () => {
   let authorization = "";
   const client = new LicenseClient({

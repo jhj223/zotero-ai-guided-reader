@@ -143,6 +143,25 @@ test("merchant bridge requires a fresh healthy signed heartbeat", () => {
   }
 });
 
+test("merchant bridge rejects replayed heartbeat nonces", () => {
+  const { bridge, database, keys } = setup();
+  try {
+    const body = heartbeatBody();
+    const headers = signedHeaders({
+      body,
+      path: HEARTBEAT_PATH,
+      privateKey: keys.privateKey,
+    });
+    bridge.processHeartbeat(headers, body);
+    assert.throws(
+      () => bridge.processHeartbeat(headers, body),
+      /RECEIPT_NONCE_REPLAY/,
+    );
+  } finally {
+    database.close();
+  }
+});
+
 test("merchant bridge rejects non-Ed25519 watcher keys at startup", () => {
   const database = new DatabaseSync(":memory:");
   const store = new LicensingStore(database);

@@ -92,10 +92,10 @@ test("static QR loader accepts JPEG and rejects unsafe image payloads", () => {
     assert.throws(() => loadStaticQrDataUrl(textPath), /PNG or JPEG/);
 
     const oversizedPath = join(directory, "oversized.png");
-    const oversized = Buffer.alloc(2 * 1024 * 1024 + 1);
+    const oversized = Buffer.alloc(700 * 1024 + 1);
     oversized.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     writeFileSync(oversizedPath, oversized);
-    assert.throws(() => loadStaticQrDataUrl(oversizedPath), /2 MiB/);
+    assert.throws(() => loadStaticQrDataUrl(oversizedPath), /700 KiB/);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

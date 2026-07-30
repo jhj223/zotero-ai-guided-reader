@@ -87,7 +87,7 @@ assert.equal(config.staticQr.imagePath, "D:/secrets/wechat-qr.png");
 ```
 
 Add provider tests that accept PNG/JPEG magic bytes, reject a non-image and a
-payload over 2 MiB, and expect:
+payload over 700 KiB, and expect:
 
 ```ts
 assert.deepEqual(await provider.createPayment(input), {

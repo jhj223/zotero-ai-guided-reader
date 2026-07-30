@@ -11,13 +11,13 @@ import { LicensingStore } from "../src/database.js";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.UTC(2026, 6, 29, 12);
 
-function setup(clock: () => number = () => now) {
+function setup(clock: () => number = () => now, plans = DEFAULT_PLANS) {
   const database = new DatabaseSync(":memory:");
   const store = new LicensingStore(database);
   let sequence = 0;
   const service = new LicensingService({
     store,
-    plans: DEFAULT_PLANS,
+    plans,
     now: clock,
     randomId: (prefix) => `${prefix}_${++sequence}`,
   });
@@ -111,6 +111,36 @@ test("reuses a static QR amount only after its reservation expires", () => {
 
     assert.equal(first.amountFen, 1990);
     assert.equal(reused.amountFen, 1990);
+  } finally {
+    database.close();
+  }
+});
+
+test("keeps static QR amounts unique across overlapping plan price ranges", () => {
+  const plans = [
+    { ...DEFAULT_PLANS[0], priceFen: 1990 },
+    { ...DEFAULT_PLANS[1], priceFen: 1995 },
+  ] as const;
+  const { database, service } = setup(() => now, plans);
+  try {
+    const monthly = Array.from({ length: 6 }, (_, index) =>
+      service.createOrder(
+        `device-overlap-monthly-${index}`,
+        "pro_monthly",
+        "wechat-static-qr",
+      ),
+    );
+    const yearly = service.createOrder(
+      "device-overlap-yearly",
+      "pro_yearly",
+      "wechat-static-qr",
+    );
+
+    assert.deepEqual(
+      monthly.map((order) => order.amountFen),
+      [1990, 1991, 1992, 1993, 1994, 1995],
+    );
+    assert.equal(yearly.amountFen, 1996);
   } finally {
     database.close();
   }
