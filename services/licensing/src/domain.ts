@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import {
   LicensingStore,
   type EntitlementRecord,
+  type StaticQrReceiptInput,
+  type StaticQrReceiptResult,
   type StoredOrder,
 } from "./database.js";
 import type { PaymentProviderKind } from "./payments/provider.js";
@@ -181,6 +183,22 @@ export class LicensingService {
       eventId,
       receivedAt,
       input,
+    );
+  }
+
+  recordStaticQrReceipt(
+    input: StaticQrReceiptInput,
+    receivedAt: number,
+    nonceHash: string,
+  ): StaticQrReceiptResult {
+    return this.dependencies.store.recordStaticQrReceipt(
+      input,
+      receivedAt,
+      nonceHash,
+      {
+        nonceRetentionMs: 10 * 60 * 1000,
+        orderTimeSkewMs: 2 * 60 * 1000,
+      },
     );
   }
 }

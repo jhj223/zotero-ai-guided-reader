@@ -26,6 +26,23 @@ export interface StoredOrder {
   paidAt?: number;
 }
 
+export interface StaticQrReceiptInput {
+  eventId: string;
+  keyId: string;
+  sequence: number;
+  messageFingerprint: string;
+  amountFen: number;
+  paidAt: number;
+  observedAt: number;
+}
+
+export interface StaticQrReceiptResult {
+  isReplay: boolean;
+  status: "matched" | "unmatched";
+  matchedOrderId?: string;
+  entitlement?: EntitlementRecord;
+}
+
 interface DatabaseRow {
   [key: string]: unknown;
 }
@@ -68,6 +85,32 @@ export class LicensingStore {
       CREATE TABLE IF NOT EXISTS webhook_events (
         event_id TEXT PRIMARY KEY,
         received_at INTEGER NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS receipt_events (
+        event_id TEXT PRIMARY KEY,
+        key_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        message_fingerprint TEXT NOT NULL UNIQUE,
+        amount_fen INTEGER NOT NULL,
+        paid_at INTEGER NOT NULL,
+        observed_at INTEGER NOT NULL,
+        received_at INTEGER NOT NULL,
+        matched_order_id TEXT REFERENCES orders(id),
+        status TEXT NOT NULL,
+        UNIQUE(key_id, sequence)
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS receipt_nonces (
+        key_id TEXT NOT NULL,
+        nonce_hash TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        PRIMARY KEY(key_id, nonce_hash)
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS watcher_status (
+        key_id TEXT PRIMARY KEY,
+        watcher_version TEXT NOT NULL,
+        state TEXT NOT NULL,
+        outbox_pending INTEGER NOT NULL,
+        last_seen_at INTEGER NOT NULL
       ) STRICT;
     `);
     this.migrateOrderColumns();
@@ -220,12 +263,171 @@ export class LicensingStore {
     });
   }
 
-  private markPaidInTransaction(input: {
-    orderId: string;
-    transactionId: string;
-    amountFen: number;
-    paidAt: number;
-  }): { order: StoredOrder; entitlement: EntitlementRecord } | undefined {
+  recordWatcherHeartbeat(input: {
+    keyId: string;
+    watcherVersion: string;
+    state: "healthy" | "parser_paused" | "wechat_offline";
+    outboxPending: number;
+    receivedAt: number;
+  }): void {
+    this.database
+      .prepare(
+        `INSERT INTO watcher_status
+           (key_id, watcher_version, state, outbox_pending, last_seen_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(key_id) DO UPDATE SET
+           watcher_version = excluded.watcher_version,
+           state = excluded.state,
+           outbox_pending = excluded.outbox_pending,
+           last_seen_at = excluded.last_seen_at`,
+      )
+      .run(
+        input.keyId,
+        input.watcherVersion,
+        input.state,
+        input.outboxPending,
+        input.receivedAt,
+      );
+  }
+
+  hasHealthyWatcher(currentTime: number, staleAfterMs: number): boolean {
+    const row = this.database
+      .prepare(
+        `SELECT 1
+         FROM watcher_status
+         WHERE state = 'healthy' AND last_seen_at >= ?
+         LIMIT 1`,
+      )
+      .get(currentTime - staleAfterMs);
+    return Boolean(row);
+  }
+
+  recordStaticQrReceipt(
+    input: StaticQrReceiptInput,
+    receivedAt: number,
+    nonceHash: string,
+    options: {
+      nonceRetentionMs: number;
+      orderTimeSkewMs: number;
+    },
+  ): StaticQrReceiptResult {
+    return this.inTransaction(() => {
+      this.database
+        .prepare("DELETE FROM receipt_nonces WHERE expires_at <= ?")
+        .run(receivedAt);
+      const nonceInsert = this.database
+        .prepare(
+          `INSERT OR IGNORE INTO receipt_nonces
+             (key_id, nonce_hash, expires_at)
+           VALUES (?, ?, ?)`,
+        )
+        .run(input.keyId, nonceHash, receivedAt + options.nonceRetentionMs);
+      if (Number(nonceInsert.changes) === 0) {
+        throw new Error("RECEIPT_NONCE_REPLAY");
+      }
+
+      const existing = this.database
+        .prepare("SELECT * FROM receipt_events WHERE event_id = ?")
+        .get(input.eventId) as DatabaseRow | undefined;
+      if (existing) {
+        if (!sameReceiptEvent(existing, input)) {
+          throw new Error("RECEIPT_EVENT_REPLAY_MISMATCH");
+        }
+        return this.replayedReceiptResult(existing);
+      }
+
+      const conflict = this.database
+        .prepare(
+          `SELECT 1
+           FROM receipt_events
+           WHERE (key_id = ? AND sequence = ?)
+              OR message_fingerprint = ?
+           LIMIT 1`,
+        )
+        .get(input.keyId, input.sequence, input.messageFingerprint);
+      if (conflict) {
+        throw new Error("RECEIPT_EVENT_REPLAY_MISMATCH");
+      }
+
+      this.database
+        .prepare(
+          `INSERT INTO receipt_events
+             (event_id, key_id, sequence, message_fingerprint, amount_fen,
+              paid_at, observed_at, received_at, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unmatched')`,
+        )
+        .run(
+          input.eventId,
+          input.keyId,
+          input.sequence,
+          input.messageFingerprint,
+          input.amountFen,
+          input.paidAt,
+          input.observedAt,
+          receivedAt,
+        );
+
+      const candidates = this.database
+        .prepare(
+          `SELECT *
+           FROM orders
+           WHERE provider = 'wechat-static-qr'
+             AND status = 'pending'
+             AND amount_fen = ?
+             AND created_at <= ?
+             AND expires_at >= ?
+           LIMIT 2`,
+        )
+        .all(
+          input.amountFen,
+          input.paidAt + options.orderTimeSkewMs,
+          input.paidAt - options.orderTimeSkewMs,
+        ) as DatabaseRow[];
+      if (candidates.length !== 1) {
+        return { isReplay: false, status: "unmatched" };
+      }
+
+      const order = mapOrder(candidates[0]);
+      const paid = this.markPaidInTransaction(
+        {
+          orderId: order.id,
+          transactionId: `static_qr_${input.eventId}`,
+          amountFen: input.amountFen,
+          paidAt: input.paidAt,
+        },
+        options.orderTimeSkewMs,
+      );
+      if (!paid) throw new Error("ORDER_NOT_FOUND");
+      this.database
+        .prepare(
+          `UPDATE receipt_events
+           SET status = 'matched', matched_order_id = ?
+           WHERE event_id = ?`,
+        )
+        .run(order.id, input.eventId);
+      return {
+        isReplay: false,
+        status: "matched",
+        matchedOrderId: order.id,
+        entitlement: paid.entitlement,
+      };
+    });
+  }
+
+  private markPaidInTransaction(
+    input: {
+      orderId: string;
+      transactionId: string;
+      amountFen: number;
+      paidAt: number;
+    },
+    expiryGraceMs = 0,
+  ):
+    | {
+        order: StoredOrder;
+        entitlement: EntitlementRecord;
+      }
+    | undefined {
     const order = this.findOrder(input.orderId);
     if (!order) return undefined;
     if (order.status === "paid") {
@@ -236,7 +438,7 @@ export class LicensingStore {
       throw new Error("ORDER_ALREADY_PAID");
     }
     if (order.status !== "pending") throw new Error("ORDER_NOT_PENDING");
-    if (input.paidAt > order.expiresAt) {
+    if (input.paidAt > order.expiresAt + expiryGraceMs) {
       throw new Error("ORDER_PAYMENT_EXPIRED");
     }
     if (order.amountFen !== input.amountFen) {
@@ -295,6 +497,24 @@ export class LicensingStore {
     this.database
       .prepare("INSERT OR IGNORE INTO devices (id, created_at) VALUES (?, ?)")
       .run(deviceId, createdAt);
+  }
+
+  private replayedReceiptResult(row: DatabaseRow): StaticQrReceiptResult {
+    if (String(row.status) !== "matched") {
+      return { isReplay: true, status: "unmatched" };
+    }
+    const matchedOrderId = stringOrUndefined(row.matched_order_id);
+    const order = matchedOrderId ? this.findOrder(matchedOrderId) : undefined;
+    const entitlement = order ? this.getEntitlement(order.deviceId) : undefined;
+    if (!matchedOrderId || !order || !entitlement) {
+      throw new Error("MATCHED_RECEIPT_WITHOUT_ENTITLEMENT");
+    }
+    return {
+      isReplay: true,
+      status: "matched",
+      matchedOrderId,
+      entitlement,
+    };
   }
 
   private allocateStaticQrAmount(order: StoredOrder): StoredOrder {
@@ -386,6 +606,20 @@ function mapEntitlement(row: DatabaseRow): EntitlementRecord {
     validUntil: Number(row.valid_until),
     updatedAt: Number(row.updated_at),
   };
+}
+
+function sameReceiptEvent(
+  row: DatabaseRow,
+  input: StaticQrReceiptInput,
+): boolean {
+  return (
+    String(row.key_id) === input.keyId &&
+    Number(row.sequence) === input.sequence &&
+    String(row.message_fingerprint) === input.messageFingerprint &&
+    Number(row.amount_fen) === input.amountFen &&
+    Number(row.paid_at) === input.paidAt &&
+    Number(row.observed_at) === input.observedAt
+  );
 }
 
 function numberOrUndefined(value: unknown): number | undefined {
