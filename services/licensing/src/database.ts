@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import type { PaymentProviderKind } from "./payments/provider.js";
 
 export interface EntitlementRecord {
   deviceId: string;
@@ -13,7 +14,10 @@ export interface StoredOrder {
   deviceId: string;
   planId: "pro_monthly" | "pro_yearly";
   durationDays: number;
+  provider: PaymentProviderKind | "legacy";
+  baseAmountFen: number;
   amountFen: number;
+  amountReservedUntil: number;
   status: "pending" | "paid" | "expired" | "closed";
   pollTokenHash: string;
   transactionId?: string;
@@ -43,7 +47,10 @@ export class LicensingStore {
         device_id TEXT NOT NULL REFERENCES devices(id),
         plan_id TEXT NOT NULL,
         duration_days INTEGER NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'legacy',
+        base_amount_fen INTEGER NOT NULL,
         amount_fen INTEGER NOT NULL,
+        amount_reserved_until INTEGER NOT NULL,
         status TEXT NOT NULL,
         poll_token_hash TEXT NOT NULL,
         transaction_id TEXT UNIQUE,
@@ -63,6 +70,7 @@ export class LicensingStore {
         received_at INTEGER NOT NULL
       ) STRICT;
     `);
+    this.migrateOrderColumns();
   }
 
   startTrial(
@@ -116,27 +124,36 @@ export class LicensingStore {
     });
   }
 
-  insertOrder(order: StoredOrder): void {
-    this.inTransaction(() => {
-      this.ensureDevice(order.deviceId, order.createdAt);
+  insertOrder(order: StoredOrder): StoredOrder {
+    return this.inTransaction(() => {
+      const storedOrder =
+        order.provider === "wechat-static-qr"
+          ? this.allocateStaticQrAmount(order)
+          : order;
+      this.ensureDevice(storedOrder.deviceId, storedOrder.createdAt);
       this.database
         .prepare(
           `INSERT INTO orders
-             (id, device_id, plan_id, duration_days, amount_fen, status,
+             (id, device_id, plan_id, duration_days, provider,
+              base_amount_fen, amount_fen, amount_reserved_until, status,
               poll_token_hash, created_at, expires_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
-          order.id,
-          order.deviceId,
-          order.planId,
-          order.durationDays,
-          order.amountFen,
-          order.status,
-          order.pollTokenHash,
-          order.createdAt,
-          order.expiresAt,
+          storedOrder.id,
+          storedOrder.deviceId,
+          storedOrder.planId,
+          storedOrder.durationDays,
+          storedOrder.provider,
+          storedOrder.baseAmountFen,
+          storedOrder.amountFen,
+          storedOrder.amountReservedUntil,
+          storedOrder.status,
+          storedOrder.pollTokenHash,
+          storedOrder.createdAt,
+          storedOrder.expiresAt,
         );
+      return storedOrder;
     });
   }
 
@@ -280,6 +297,55 @@ export class LicensingStore {
       .run(deviceId, createdAt);
   }
 
+  private allocateStaticQrAmount(order: StoredOrder): StoredOrder {
+    const amountIsReserved = this.database.prepare(
+      `SELECT 1
+       FROM orders
+       WHERE provider = 'wechat-static-qr'
+         AND amount_fen = ?
+         AND amount_reserved_until > ?
+       LIMIT 1`,
+    );
+    for (let suffix = 0; suffix < 100; suffix += 1) {
+      const candidate = order.baseAmountFen + suffix;
+      if (!amountIsReserved.get(candidate, order.createdAt)) {
+        return { ...order, amountFen: candidate };
+      }
+    }
+    throw new Error("PAYMENT_SLOTS_BUSY");
+  }
+
+  private migrateOrderColumns(): void {
+    const columns = new Set(
+      (
+        this.database
+          .prepare("PRAGMA table_info(orders)")
+          .all() as DatabaseRow[]
+      ).map((row) => String(row.name)),
+    );
+    if (!columns.has("provider")) {
+      this.database.exec(
+        "ALTER TABLE orders ADD COLUMN provider TEXT NOT NULL DEFAULT 'legacy'",
+      );
+    }
+    if (!columns.has("base_amount_fen")) {
+      this.database.exec(
+        "ALTER TABLE orders ADD COLUMN base_amount_fen INTEGER",
+      );
+      this.database.exec(
+        "UPDATE orders SET base_amount_fen = amount_fen WHERE base_amount_fen IS NULL",
+      );
+    }
+    if (!columns.has("amount_reserved_until")) {
+      this.database.exec(
+        "ALTER TABLE orders ADD COLUMN amount_reserved_until INTEGER",
+      );
+      this.database.exec(
+        "UPDATE orders SET amount_reserved_until = expires_at WHERE amount_reserved_until IS NULL",
+      );
+    }
+  }
+
   private inTransaction<T>(operation: () => T): T {
     this.database.exec("BEGIN IMMEDIATE");
     try {
@@ -299,7 +365,10 @@ function mapOrder(row: DatabaseRow): StoredOrder {
     deviceId: String(row.device_id),
     planId: String(row.plan_id) as StoredOrder["planId"],
     durationDays: Number(row.duration_days),
+    provider: String(row.provider) as StoredOrder["provider"],
+    baseAmountFen: Number(row.base_amount_fen),
     amountFen: Number(row.amount_fen),
+    amountReservedUntil: Number(row.amount_reserved_until),
     status: String(row.status) as StoredOrder["status"],
     pollTokenHash: String(row.poll_token_hash),
     transactionId: stringOrUndefined(row.transaction_id),

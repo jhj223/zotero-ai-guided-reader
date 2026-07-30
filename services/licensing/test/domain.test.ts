@@ -11,14 +11,14 @@ import { LicensingStore } from "../src/database.js";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.UTC(2026, 6, 29, 12);
 
-function setup() {
+function setup(clock: () => number = () => now) {
   const database = new DatabaseSync(":memory:");
   const store = new LicensingStore(database);
   let sequence = 0;
   const service = new LicensingService({
     store,
     plans: DEFAULT_PLANS,
-    now: () => now,
+    now: clock,
     randomId: (prefix) => `${prefix}_${++sequence}`,
   });
   return { database, store, service };
@@ -48,7 +48,92 @@ test("creates orders with server-owned monthly and yearly prices", () => {
     assert.equal(monthly.durationDays, 30);
     assert.equal(yearly.amountFen, 19900);
     assert.equal(yearly.durationDays, 365);
+    assert.equal(monthly.provider, "sandbox");
+    assert.equal(yearly.provider, "sandbox");
     assert.notEqual(monthly.pollToken, yearly.pollToken);
+  } finally {
+    database.close();
+  }
+});
+
+test("reserves all one hundred unique static QR cent suffixes", () => {
+  const { database, service } = setup();
+  try {
+    const orders = Array.from({ length: 100 }, (_, index) =>
+      service.createOrder(
+        `device-static-${index}`,
+        "pro_monthly",
+        "wechat-static-qr",
+      ),
+    );
+
+    assert.deepEqual(
+      orders.map((order) => order.amountFen),
+      Array.from({ length: 100 }, (_, suffix) => 1990 + suffix),
+    );
+    assert.ok(
+      orders.every(
+        (order) =>
+          order.amountReservedUntil === now + 48 * 60 * 60 * 1000 &&
+          order.baseAmountFen === 1990 &&
+          order.provider === "wechat-static-qr",
+      ),
+    );
+    assert.throws(
+      () =>
+        service.createOrder(
+          "device-static-overflow",
+          "pro_monthly",
+          "wechat-static-qr",
+        ),
+      /PAYMENT_SLOTS_BUSY/,
+    );
+  } finally {
+    database.close();
+  }
+});
+
+test("reuses a static QR amount only after its reservation expires", () => {
+  let currentTime = now;
+  const { database, service } = setup(() => currentTime);
+  try {
+    const first = service.createOrder(
+      "device-static-first",
+      "pro_monthly",
+      "wechat-static-qr",
+    );
+    currentTime += 48 * 60 * 60 * 1000 + 1;
+    const reused = service.createOrder(
+      "device-static-reused",
+      "pro_monthly",
+      "wechat-static-qr",
+    );
+
+    assert.equal(first.amountFen, 1990);
+    assert.equal(reused.amountFen, 1990);
+  } finally {
+    database.close();
+  }
+});
+
+test("keeps catalog prices unchanged for non-static providers", () => {
+  const { database, service } = setup();
+  try {
+    const sandbox = service.createOrder(
+      "device-sandbox",
+      "pro_monthly",
+      "sandbox",
+    );
+    const native = service.createOrder(
+      "device-native",
+      "pro_yearly",
+      "wechat-native",
+    );
+
+    assert.equal(sandbox.amountFen, 1990);
+    assert.equal(native.amountFen, 19900);
+    assert.equal(sandbox.baseAmountFen, sandbox.amountFen);
+    assert.equal(native.baseAmountFen, native.amountFen);
   } finally {
     database.close();
   }

@@ -4,9 +4,11 @@ import {
   type EntitlementRecord,
   type StoredOrder,
 } from "./database.js";
+import type { PaymentProviderKind } from "./payments/provider.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ORDER_TTL_MS = 15 * 60 * 1000;
+const STATIC_QR_RESERVATION_MS = 48 * 60 * 60 * 1000;
 
 export type PaidPlanId = "pro_monthly" | "pro_yearly";
 
@@ -36,7 +38,10 @@ export interface CreatedOrder {
   id: string;
   deviceId: string;
   planId: PaidPlanId;
+  provider: StoredOrder["provider"];
+  baseAmountFen: number;
   amountFen: number;
+  amountReservedUntil: number;
   durationDays: number;
   status: StoredOrder["status"];
   pollToken: string;
@@ -79,7 +84,11 @@ export class LicensingService {
     );
   }
 
-  createOrder(deviceId: string, planId: PaidPlanId): CreatedOrder {
+  createOrder(
+    deviceId: string,
+    planId: PaidPlanId,
+    provider: PaymentProviderKind = "sandbox",
+  ): CreatedOrder {
     assertDeviceId(deviceId);
     const plan = this.plansById.get(planId);
     if (!plan) throw new Error("UNKNOWN_PLAN");
@@ -90,14 +99,20 @@ export class LicensingService {
       deviceId,
       planId,
       durationDays: plan.durationDays,
+      provider,
+      baseAmountFen: plan.priceFen,
       amountFen: plan.priceFen,
+      amountReservedUntil:
+        provider === "wechat-static-qr"
+          ? createdAt + STATIC_QR_RESERVATION_MS
+          : createdAt + ORDER_TTL_MS,
       status: "pending",
       pollTokenHash: hashToken(pollToken),
       createdAt,
       expiresAt: createdAt + ORDER_TTL_MS,
     };
-    this.dependencies.store.insertOrder(order);
-    return { ...order, pollToken };
+    const storedOrder = this.dependencies.store.insertOrder(order);
+    return { ...storedOrder, pollToken };
   }
 
   getOrder(orderId: string, pollToken: string): StoredOrder | undefined {
