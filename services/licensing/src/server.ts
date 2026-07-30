@@ -200,14 +200,16 @@ async function handleRequest(
         planId === "pro_monthly" ? "AI 带读 Pro 月付" : "AI 带读 Pro 年付",
       expiresAt: order.expiresAt,
     });
-    const safeCodeUrl = validatePaymentCodeUrl(payment.codeUrl);
-    const qrDataUrl = await QRCode.toDataURL(safeCodeUrl, {
-      type: "image/png",
-      errorCorrectionLevel: "M",
-      margin: 2,
-      width: 320,
-      color: { dark: "#111827ff", light: "#ffffffff" },
-    });
+    const qrDataUrl =
+      "qrDataUrl" in payment
+        ? payment.qrDataUrl
+        : await QRCode.toDataURL(validatePaymentCodeUrl(payment.codeUrl), {
+            type: "image/png",
+            errorCorrectionLevel: "M",
+            margin: 2,
+            width: 320,
+            color: { dark: "#111827ff", light: "#ffffffff" },
+          });
     sendJson(response, 201, {
       orderId: order.id,
       pollToken: order.pollToken,

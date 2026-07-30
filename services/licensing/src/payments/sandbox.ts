@@ -6,6 +6,8 @@ import type {
 } from "./provider.js";
 
 export class SandboxPaymentProvider implements PaymentProvider {
+  readonly kind = "sandbox" as const;
+
   constructor(
     private readonly publicBaseUrl: string,
     private readonly secret: string,

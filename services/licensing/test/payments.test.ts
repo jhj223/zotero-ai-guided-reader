@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { createCipheriv, createSign, generateKeyPairSync } from "node:crypto";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { SandboxPaymentProvider } from "../src/payments/sandbox.js";
+import {
+  StaticQrPaymentProvider,
+  loadStaticQrDataUrl,
+} from "../src/payments/staticQr.js";
 import {
   WechatNativeProvider,
   createWechatAuthorization,
@@ -44,6 +51,54 @@ test("sandbox provider creates deterministic test checkout URLs", async () => {
     provider.verifyProof("order_456", provider.createProof("order_123")),
     false,
   );
+});
+
+test("static QR provider returns the validated merchant image", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "static-qr-test-"));
+  try {
+    const path = join(directory, "merchant.png");
+    writeFileSync(
+      path,
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01]),
+    );
+    const qrDataUrl = loadStaticQrDataUrl(path);
+    const provider = new StaticQrPaymentProvider(qrDataUrl);
+    const input = {
+      orderId: "order_static_123",
+      amountFen: 1993,
+      description: "AI 带读 Pro 月付",
+      expiresAt: Date.UTC(2026, 6, 29, 13),
+    };
+
+    assert.match(qrDataUrl, /^data:image\/png;base64,/);
+    assert.deepEqual(await provider.createPayment(input), {
+      providerOrderId: input.orderId,
+      qrDataUrl,
+    });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("static QR loader accepts JPEG and rejects unsafe image payloads", () => {
+  const directory = mkdtempSync(join(tmpdir(), "static-qr-test-"));
+  try {
+    const jpegPath = join(directory, "merchant.jpg");
+    writeFileSync(jpegPath, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x01]));
+    assert.match(loadStaticQrDataUrl(jpegPath), /^data:image\/jpeg;base64,/);
+
+    const textPath = join(directory, "merchant.svg");
+    writeFileSync(textPath, "<svg></svg>");
+    assert.throws(() => loadStaticQrDataUrl(textPath), /PNG or JPEG/);
+
+    const oversizedPath = join(directory, "oversized.png");
+    const oversized = Buffer.alloc(2 * 1024 * 1024 + 1);
+    oversized.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    writeFileSync(oversizedPath, oversized);
+    assert.throws(() => loadStaticQrDataUrl(oversizedPath), /2 MiB/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("creates a WeChat APIv3 authorization signature", () => {

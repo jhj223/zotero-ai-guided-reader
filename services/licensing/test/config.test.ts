@@ -122,3 +122,49 @@ test("validates WeChat Native secrets and price overrides", () => {
   assert.equal(config.monthlyPriceFen, 2990);
   assert.equal(config.yearlyPriceFen, 29900);
 });
+
+test("loads static QR config with strict watcher public-key paths", () => {
+  const config = loadConfig({
+    NODE_ENV: "production",
+    PAYMENT_PROVIDER: "wechat-static-qr",
+    DATABASE_PATH: "D:/data/licensing.sqlite",
+    LICENSE_PRIVATE_KEY_PATH: "D:/secrets/private.pem",
+    LICENSE_PUBLIC_KEY_PATH: "D:/secrets/public.pem",
+    ENTITLEMENT_ISSUER: "https://license.example.com",
+    PUBLIC_BASE_URL: "https://license.example.com",
+    SOURCE_URL: "https://github.com/example/licensing-source",
+    WECHAT_STATIC_QR_IMAGE_PATH: "D:/secrets/wechat-qr.png",
+    RECEIPT_WATCHER_KEYS_JSON:
+      '{"merchant-pc-01":"D:/secrets/merchant-pc-01.pub.pem"}',
+  });
+
+  assert.equal(config.paymentProvider, "wechat-static-qr");
+  assert.equal(config.staticQr.imagePath, "D:/secrets/wechat-qr.png");
+  assert.deepEqual(config.staticQr.watcherPublicKeyPaths, {
+    "merchant-pc-01": "D:/secrets/merchant-pc-01.pub.pem",
+  });
+});
+
+test("rejects missing or malformed static QR watcher configuration", () => {
+  const common = {
+    NODE_ENV: "production",
+    PAYMENT_PROVIDER: "wechat-static-qr",
+    DATABASE_PATH: "D:/data/licensing.sqlite",
+    LICENSE_PRIVATE_KEY_PATH: "D:/secrets/private.pem",
+    LICENSE_PUBLIC_KEY_PATH: "D:/secrets/public.pem",
+    ENTITLEMENT_ISSUER: "https://license.example.com",
+    PUBLIC_BASE_URL: "https://license.example.com",
+    SOURCE_URL: "https://github.com/example/licensing-source",
+    WECHAT_STATIC_QR_IMAGE_PATH: "D:/secrets/wechat-qr.png",
+  };
+
+  assert.throws(() => loadConfig(common), /RECEIPT_WATCHER_KEYS_JSON/);
+  assert.throws(
+    () =>
+      loadConfig({
+        ...common,
+        RECEIPT_WATCHER_KEYS_JSON: '{"bad key":"D:/secrets/key.pem"}',
+      }),
+    /RECEIPT_WATCHER_KEYS_JSON/,
+  );
+});

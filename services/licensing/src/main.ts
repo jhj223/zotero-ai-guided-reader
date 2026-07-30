@@ -13,6 +13,10 @@ import { LicensingService, type Plan } from "./domain.js";
 import { EntitlementSigner } from "./entitlements.js";
 import { SandboxPaymentProvider } from "./payments/sandbox.js";
 import {
+  StaticQrPaymentProvider,
+  loadStaticQrDataUrl,
+} from "./payments/staticQr.js";
+import {
   WechatNativeProvider,
   type DirectWechatNativeConfig,
 } from "./payments/wechatNative.js";
@@ -74,36 +78,40 @@ const paymentProvider =
         config.publicBaseUrl,
         config.sandboxSecret,
       ))
-    : (() => {
-        const platformPublicKeys = new Map<string, KeyLike>(
-          Object.entries(config.wechat.platformKeyPaths).map(
-            ([serial, path]) => [serial, readFileSync(resolve(path), "utf8")],
-          ),
-        );
-        const wechatConfig: DirectWechatNativeConfig = {
-          mode: "direct",
-          merchantId: config.wechat.merchantId,
-          appId: config.wechat.appId,
-          merchantSerial: config.wechat.merchantSerial,
-          merchantPrivateKey: readFileSync(
-            resolve(config.wechat.merchantPrivateKeyPath),
-            "utf8",
-          ),
-          apiV3Key: config.wechat.apiV3Key,
-          notifyUrl: config.wechat.notifyUrl,
-          platformPublicKeys,
-        };
-        webhookProcessor = new WechatWebhookProcessor(
-          {
-            merchantId: wechatConfig.merchantId,
-            appId: wechatConfig.appId,
-            apiV3Key: wechatConfig.apiV3Key,
+    : config.paymentProvider === "wechat-static-qr"
+      ? new StaticQrPaymentProvider(
+          loadStaticQrDataUrl(resolve(config.staticQr.imagePath)),
+        )
+      : (() => {
+          const platformPublicKeys = new Map<string, KeyLike>(
+            Object.entries(config.wechat.platformKeyPaths).map(
+              ([serial, path]) => [serial, readFileSync(resolve(path), "utf8")],
+            ),
+          );
+          const wechatConfig: DirectWechatNativeConfig = {
+            mode: "direct",
+            merchantId: config.wechat.merchantId,
+            appId: config.wechat.appId,
+            merchantSerial: config.wechat.merchantSerial,
+            merchantPrivateKey: readFileSync(
+              resolve(config.wechat.merchantPrivateKeyPath),
+              "utf8",
+            ),
+            apiV3Key: config.wechat.apiV3Key,
+            notifyUrl: config.wechat.notifyUrl,
             platformPublicKeys,
-          },
-          licensing,
-        );
-        return new WechatNativeProvider(wechatConfig);
-      })();
+          };
+          webhookProcessor = new WechatWebhookProcessor(
+            {
+              merchantId: wechatConfig.merchantId,
+              appId: wechatConfig.appId,
+              apiV3Key: wechatConfig.apiV3Key,
+              platformPublicKeys,
+            },
+            licensing,
+          );
+          return new WechatNativeProvider(wechatConfig);
+        })();
 
 const server = createLicensingServer({
   licensing,

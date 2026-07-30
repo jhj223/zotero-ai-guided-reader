@@ -27,6 +27,8 @@ export interface DirectWechatNativeConfig {
 }
 
 export class WechatNativeProvider implements PaymentProvider {
+  readonly kind = "wechat-native" as const;
+
   constructor(
     private readonly config: DirectWechatNativeConfig,
     private readonly fetchImpl: typeof fetch = fetch,

@@ -34,6 +34,7 @@ function setup(clock: () => number = () => now) {
   });
   const paymentInputs: PaymentOrderInput[] = [];
   const paymentProvider: PaymentProvider = {
+    kind: "wechat-native",
     async createPayment(input) {
       paymentInputs.push(input);
       return {

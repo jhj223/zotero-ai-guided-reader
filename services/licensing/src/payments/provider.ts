@@ -5,11 +5,24 @@ export interface PaymentOrderInput {
   expiresAt: number;
 }
 
-export interface CreatedPayment {
-  providerOrderId: string;
-  codeUrl: string;
-}
+export type PaymentProviderKind =
+  | "sandbox"
+  | "wechat-native"
+  | "wechat-static-qr";
+
+export type CreatedPayment =
+  | {
+      providerOrderId: string;
+      codeUrl: string;
+      qrDataUrl?: never;
+    }
+  | {
+      providerOrderId: string;
+      qrDataUrl: string;
+      codeUrl?: never;
+    };
 
 export interface PaymentProvider {
+  readonly kind: PaymentProviderKind;
   createPayment(input: PaymentOrderInput): Promise<CreatedPayment>;
 }

@@ -4,6 +4,13 @@ export type LicensingConfig =
       sandboxSecret: string;
     })
   | (BaseConfig & {
+      paymentProvider: "wechat-static-qr";
+      staticQr: {
+        imagePath: string;
+        watcherPublicKeyPaths: Readonly<Record<string, string>>;
+      };
+    })
+  | (BaseConfig & {
       paymentProvider: "wechat-native";
       wechat: {
         merchantId: string;
@@ -116,8 +123,26 @@ export function loadConfig(
     }
     return { ...base, paymentProvider: "sandbox", sandboxSecret };
   }
+  if (provider === "wechat-static-qr") {
+    return {
+      ...base,
+      paymentProvider: "wechat-static-qr",
+      staticQr: {
+        imagePath: requireText(
+          environment.WECHAT_STATIC_QR_IMAGE_PATH,
+          "WECHAT_STATIC_QR_IMAGE_PATH",
+        ),
+        watcherPublicKeyPaths: parseKeyPathMap(
+          environment.RECEIPT_WATCHER_KEYS_JSON,
+          "RECEIPT_WATCHER_KEYS_JSON",
+        ),
+      },
+    };
+  }
   if (provider !== "wechat-native") {
-    throw new Error("PAYMENT_PROVIDER must be sandbox or wechat-native.");
+    throw new Error(
+      "PAYMENT_PROVIDER must be sandbox, wechat-native, or wechat-static-qr.",
+    );
   }
   const apiV3Key = requireText(
     environment.WECHAT_API_V3_KEY,
@@ -144,7 +169,10 @@ export function loadConfig(
         "WECHAT_MERCHANT_PRIVATE_KEY_PATH",
       ),
       apiV3Key,
-      platformKeyPaths: parseKeyPathMap(environment.WECHAT_PLATFORM_KEYS_JSON),
+      platformKeyPaths: parseKeyPathMap(
+        environment.WECHAT_PLATFORM_KEYS_JSON,
+        "WECHAT_PLATFORM_KEYS_JSON",
+      ),
       notifyUrl: `${publicBaseUrl}/v1/webhooks/wechat`,
     },
   };
@@ -206,18 +234,17 @@ function parseSourceUrl(rawValue: string): string {
 
 function parseKeyPathMap(
   rawValue: string | undefined,
+  name: string,
 ): Readonly<Record<string, string>> {
-  const text = requireText(rawValue, "WECHAT_PLATFORM_KEYS_JSON");
+  const text = requireText(rawValue, name);
   let value: unknown;
   try {
     value = JSON.parse(text);
   } catch {
-    throw new Error("WECHAT_PLATFORM_KEYS_JSON must be valid JSON.");
+    throw new Error(`${name} must be valid JSON.`);
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(
-      "WECHAT_PLATFORM_KEYS_JSON must map serials to public key paths.",
-    );
+    throw new Error(`${name} must map key IDs to public key paths.`);
   }
   const entries = Object.entries(value as Record<string, unknown>);
   if (
@@ -229,9 +256,7 @@ function parseKeyPathMap(
         path.trim().length === 0,
     )
   ) {
-    throw new Error(
-      "WECHAT_PLATFORM_KEYS_JSON must map serials to public key paths.",
-    );
+    throw new Error(`${name} must map key IDs to public key paths.`);
   }
   return Object.fromEntries(
     entries.map(([serial, path]) => [serial, String(path).trim()]),
