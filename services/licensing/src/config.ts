@@ -21,6 +21,19 @@ export type LicensingConfig =
         platformKeyPaths: Readonly<Record<string, string>>;
         notifyUrl: string;
       };
+    })
+  | (BaseConfig & {
+      paymentProvider: "chinaums-qr";
+      chinaums: {
+        environment: "test" | "production";
+        appId: string;
+        appKey: string;
+        merchantId: string;
+        terminalId: string;
+        messageSourceId: string;
+        notificationKey: string;
+        notifyUrl: string;
+      };
     });
 
 export interface BaseConfig {
@@ -139,9 +152,44 @@ export function loadConfig(
       },
     };
   }
+  if (provider === "chinaums-qr") {
+    return {
+      ...base,
+      paymentProvider: "chinaums-qr",
+      chinaums: {
+        environment: nodeEnvironment === "production" ? "production" : "test",
+        appId: requiredPattern(
+          requireText(environment.CHINAUMS_APP_ID, "CHINAUMS_APP_ID"),
+          "CHINAUMS_APP_ID",
+          /^[A-Za-z0-9_-]{1,32}$/,
+        ),
+        appKey: requireText(environment.CHINAUMS_APP_KEY, "CHINAUMS_APP_KEY"),
+        merchantId: requiredPattern(
+          requireText(environment.CHINAUMS_MID, "CHINAUMS_MID"),
+          "CHINAUMS_MID",
+          /^\d{15}$/,
+        ),
+        terminalId: requiredPattern(
+          requireText(environment.CHINAUMS_TID, "CHINAUMS_TID"),
+          "CHINAUMS_TID",
+          /^[A-Za-z0-9]{8}$/,
+        ),
+        messageSourceId: requiredPattern(
+          requireText(environment.CHINAUMS_MSG_SRC_ID, "CHINAUMS_MSG_SRC_ID"),
+          "CHINAUMS_MSG_SRC_ID",
+          /^[A-Za-z0-9]{4}$/,
+        ),
+        notificationKey: requireText(
+          environment.CHINAUMS_NOTIFY_KEY,
+          "CHINAUMS_NOTIFY_KEY",
+        ),
+        notifyUrl: `${publicBaseUrl}/v1/webhooks/chinaums`,
+      },
+    };
+  }
   if (provider !== "wechat-native") {
     throw new Error(
-      "PAYMENT_PROVIDER must be sandbox, wechat-native, or wechat-static-qr.",
+      "PAYMENT_PROVIDER must be sandbox, chinaums-qr, wechat-native, or wechat-static-qr.",
     );
   }
   const apiV3Key = requireText(

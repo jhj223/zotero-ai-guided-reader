@@ -7,6 +7,7 @@ export interface PaymentOrderInput {
 
 export type PaymentProviderKind =
   | "sandbox"
+  | "chinaums-qr"
   | "wechat-native"
   | "wechat-static-qr";
 

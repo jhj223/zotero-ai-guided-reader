@@ -15,6 +15,7 @@ export interface StoredOrder {
   planId: "pro_monthly" | "pro_yearly";
   durationDays: number;
   provider: PaymentProviderKind | "legacy";
+  providerOrderId?: string;
   baseAmountFen: number;
   amountFen: number;
   amountReservedUntil: number;
@@ -65,6 +66,7 @@ export class LicensingStore {
         plan_id TEXT NOT NULL,
         duration_days INTEGER NOT NULL,
         provider TEXT NOT NULL DEFAULT 'legacy',
+        provider_order_id TEXT,
         base_amount_fen INTEGER NOT NULL,
         amount_fen INTEGER NOT NULL,
         amount_reserved_until INTEGER NOT NULL,
@@ -114,6 +116,11 @@ export class LicensingStore {
       ) STRICT;
     `);
     this.migrateOrderColumns();
+    this.database.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS orders_provider_order_id_unique
+      ON orders(provider_order_id)
+      WHERE provider_order_id IS NOT NULL;
+    `);
   }
 
   startTrial(
@@ -178,9 +185,10 @@ export class LicensingStore {
         .prepare(
           `INSERT INTO orders
              (id, device_id, plan_id, duration_days, provider,
-              base_amount_fen, amount_fen, amount_reserved_until, status,
-              poll_token_hash, created_at, expires_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              provider_order_id, base_amount_fen, amount_fen,
+              amount_reserved_until, status, poll_token_hash, created_at,
+              expires_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           storedOrder.id,
@@ -188,6 +196,7 @@ export class LicensingStore {
           storedOrder.planId,
           storedOrder.durationDays,
           storedOrder.provider,
+          storedOrder.providerOrderId ?? null,
           storedOrder.baseAmountFen,
           storedOrder.amountFen,
           storedOrder.amountReservedUntil,
@@ -198,6 +207,39 @@ export class LicensingStore {
         );
       return storedOrder;
     });
+  }
+
+  bindProviderOrderId(orderId: string, providerOrderId: string): string {
+    return this.inTransaction(() => {
+      const order = this.findOrder(orderId);
+      if (!order) throw new Error("ORDER_NOT_FOUND");
+      if (order.provider !== "chinaums-qr") {
+        throw new Error("ORDER_PROVIDER_MISMATCH");
+      }
+      if (order.providerOrderId === providerOrderId) return providerOrderId;
+      if (order.providerOrderId) {
+        throw new Error("PROVIDER_ORDER_ALREADY_BOUND");
+      }
+      const existing = this.findOrderByProviderOrderId(providerOrderId);
+      if (existing) throw new Error("PROVIDER_ORDER_ALREADY_BOUND");
+      const result = this.database
+        .prepare(
+          `UPDATE orders SET provider_order_id = ?
+           WHERE id = ? AND provider_order_id IS NULL`,
+        )
+        .run(providerOrderId, orderId);
+      if (Number(result.changes) !== 1) {
+        throw new Error("PROVIDER_ORDER_ALREADY_BOUND");
+      }
+      return providerOrderId;
+    });
+  }
+
+  findOrderByProviderOrderId(providerOrderId: string): StoredOrder | undefined {
+    const row = this.database
+      .prepare("SELECT * FROM orders WHERE provider_order_id = ?")
+      .get(providerOrderId) as DatabaseRow | undefined;
+    return row ? mapOrder(row) : undefined;
   }
 
   findOrder(id: string): StoredOrder | undefined {
@@ -572,6 +614,11 @@ export class LicensingStore {
         "ALTER TABLE orders ADD COLUMN provider TEXT NOT NULL DEFAULT 'legacy'",
       );
     }
+    if (!columns.has("provider_order_id")) {
+      this.database.exec(
+        "ALTER TABLE orders ADD COLUMN provider_order_id TEXT",
+      );
+    }
     if (!columns.has("base_amount_fen")) {
       this.database.exec(
         "ALTER TABLE orders ADD COLUMN base_amount_fen INTEGER",
@@ -610,6 +657,8 @@ function mapOrder(row: DatabaseRow): StoredOrder {
     planId: String(row.plan_id) as StoredOrder["planId"],
     durationDays: Number(row.duration_days),
     provider: String(row.provider) as StoredOrder["provider"],
+    providerOrderId:
+      row.provider_order_id == null ? undefined : String(row.provider_order_id),
     baseAmountFen: Number(row.base_amount_fen),
     amountFen: Number(row.amount_fen),
     amountReservedUntil: Number(row.amount_reserved_until),

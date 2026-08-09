@@ -8,6 +8,8 @@ import { isIP } from "node:net";
 import QRCode from "qrcode";
 import type { LicensingService, PaidPlanId } from "./domain.js";
 import type { EntitlementSigner } from "./entitlements.js";
+import type { ChinaumsQrProvider } from "./payments/chinaumsQr.js";
+import type { ChinaumsWebhookProcessor } from "./payments/chinaumsWebhook.js";
 import type { PaymentProvider } from "./payments/provider.js";
 import type { SandboxPaymentProvider } from "./payments/sandbox.js";
 import type { StaticQrBridge } from "./payments/staticQrBridge.js";
@@ -17,6 +19,7 @@ import { FixedWindowRateLimiter } from "./rateLimit.js";
 const MAX_JSON_BYTES = 16 * 1024;
 const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 const CLIENT_VERSION_PATTERN = /^[0-9A-Za-z.+_-]{1,64}$/;
+const CHINAUMS_QUERY_RETENTION_MS = 20 * 60 * 1000;
 
 export interface LicensingServerDependencies {
   licensing: LicensingService;
@@ -25,6 +28,8 @@ export interface LicensingServerDependencies {
   sandboxPaymentProvider?: SandboxPaymentProvider;
   staticQrBridge?: StaticQrBridge;
   webhookProcessor?: WechatWebhookProcessor;
+  chinaumsPaymentProvider?: ChinaumsQrProvider;
+  chinaumsWebhookProcessor?: ChinaumsWebhookProcessor;
   sourceUrl: string;
   now?: () => number;
 }
@@ -48,8 +53,19 @@ export function createLicensingServer(
   ) {
     throw new Error("Static QR payments require a merchant receipt bridge.");
   }
+  if (
+    dependencies.paymentProvider.kind === "chinaums-qr" &&
+    (dependencies.chinaumsPaymentProvider !== dependencies.paymentProvider ||
+      !dependencies.chinaumsWebhookProcessor)
+  ) {
+    throw new Error(
+      "ChinaUMS QR payments require the matching query provider and webhook processor.",
+    );
+  }
   const now = dependencies.now ?? Date.now;
   const processPepper = randomBytes(32);
+  const chinaumsQueryTimes = new Map<string, number>();
+  const chinaumsQueryCleanup = { nextAt: 0 };
   const limiters = {
     trialsBySource: new FixedWindowRateLimiter({
       limit: 20,
@@ -93,6 +109,8 @@ export function createLicensingServer(
     void handleRequest(request, response, dependencies, {
       now,
       processPepper,
+      chinaumsQueryTimes,
+      chinaumsQueryCleanup,
       limiters,
     }).catch((error: unknown) => {
       if (response.headersSent) {
@@ -120,6 +138,8 @@ async function handleRequest(
   runtime: {
     now: () => number;
     processPepper: Buffer;
+    chinaumsQueryTimes: Map<string, number>;
+    chinaumsQueryCleanup: { nextAt: number };
     limiters: {
       trialsBySource: FixedWindowRateLimiter;
       trialsByDevice: FixedWindowRateLimiter;
@@ -239,6 +259,12 @@ async function handleRequest(
         planId === "pro_monthly" ? "AI 带读 Pro 月付" : "AI 带读 Pro 年付",
       expiresAt: order.expiresAt,
     });
+    if (dependencies.paymentProvider.kind === "chinaums-qr") {
+      dependencies.licensing.bindProviderOrderId(
+        order.id,
+        payment.providerOrderId,
+      );
+    }
     const qrDataUrl =
       "qrDataUrl" in payment
         ? payment.qrDataUrl
@@ -319,9 +345,54 @@ async function handleRequest(
       runtime.limiters.polls,
       requestIdentity(request, orderMatch[1], runtime.processPepper),
     );
-    const order = dependencies.licensing.getOrder(orderMatch[1], pollToken);
+    let order = dependencies.licensing.getOrder(orderMatch[1], pollToken);
     if (!order) {
       throw new ApiError(404, "ORDER_NOT_FOUND", "订单不存在。");
+    }
+    if (
+      order.status === "pending" &&
+      order.provider === "chinaums-qr" &&
+      order.providerOrderId &&
+      dependencies.chinaumsPaymentProvider
+    ) {
+      const currentTime = runtime.now();
+      if (currentTime >= runtime.chinaumsQueryCleanup.nextAt) {
+        for (const [orderId, queriedAt] of runtime.chinaumsQueryTimes) {
+          if (currentTime - queriedAt > CHINAUMS_QUERY_RETENTION_MS) {
+            runtime.chinaumsQueryTimes.delete(orderId);
+          }
+        }
+        runtime.chinaumsQueryCleanup.nextAt = currentTime + 60_000;
+      }
+      const lastQuery = runtime.chinaumsQueryTimes.get(order.id);
+      if (lastQuery == null || currentTime - lastQuery >= 5_000) {
+        runtime.chinaumsQueryTimes.set(order.id, currentTime);
+        try {
+          const payment =
+            await dependencies.chinaumsPaymentProvider.queryPayment(
+              order.providerOrderId,
+            );
+          if (payment.status === "paid") {
+            dependencies.licensing.recordWebhookPayment(
+              payment.eventId,
+              currentTime,
+              {
+                orderId: order.id,
+                transactionId: payment.transactionId,
+                amountFen: payment.amountFen,
+                paidAt: payment.paidAt,
+              },
+            );
+          }
+        } catch {
+          // Fail closed: a provider or network error must never activate access.
+        }
+        order = dependencies.licensing.getOrder(orderMatch[1], pollToken);
+        if (!order) throw new Error("ORDER_DISAPPEARED_AFTER_PAYMENT_QUERY");
+        if (order.status !== "pending") {
+          runtime.chinaumsQueryTimes.delete(order.id);
+        }
+      }
     }
     const base = {
       orderId: order.id,
@@ -451,6 +522,34 @@ async function handleRequest(
       validUntil: new Date(entitlement.validUntil).toISOString(),
       entitlementToken: dependencies.signer.sign(entitlement, runtime.now()),
     });
+    return;
+  }
+
+  if (
+    method === "POST" &&
+    url.pathname === "/v1/webhooks/chinaums" &&
+    dependencies.paymentProvider.kind === "chinaums-qr" &&
+    dependencies.chinaumsWebhookProcessor
+  ) {
+    enforceLimit(
+      response,
+      runtime.limiters.merchantRequests,
+      requestSourceIdentity(request, runtime.processPepper),
+    );
+    try {
+      const mediaType = String(request.headers["content-type"] || "")
+        .split(";", 1)[0]
+        .trim()
+        .toLowerCase();
+      if (mediaType !== "application/x-www-form-urlencoded") {
+        throw new Error("CHINAUMS_CALLBACK_MEDIA_TYPE_INVALID");
+      }
+      const rawBody = await readRawBody(request, 64 * 1024);
+      dependencies.chinaumsWebhookProcessor.process(rawBody);
+      sendText(response, 200, "SUCCESS");
+    } catch {
+      if (!response.headersSent) sendText(response, 400, "FAILED");
+    }
     return;
   }
 
@@ -735,6 +834,17 @@ function sendHtml(
 ): void {
   response.statusCode = status;
   response.setHeader("Content-Type", "text/html; charset=utf-8");
+  response.setHeader("Content-Length", Buffer.byteLength(body));
+  response.end(body);
+}
+
+function sendText(
+  response: ServerResponse,
+  status: number,
+  body: string,
+): void {
+  response.statusCode = status;
+  response.setHeader("Content-Type", "text/plain; charset=utf-8");
   response.setHeader("Content-Length", Buffer.byteLength(body));
   response.end(body);
 }

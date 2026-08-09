@@ -16,6 +16,32 @@ npm run license:dev
 沙盒二维码打开本地确认页，不会真实扣款。生产环境会拒绝
 `PAYMENT_PROVIDER=sandbox`。
 
+## 银联商务一次性二维码
+
+`PAYMENT_PROVIDER=chinaums-qr` 使用银联商务开放平台为每个本地订单创建一次性账单
+二维码。银联商务回调经过 SHA-256 验签、商户号、终端号、账单号、金额和支付成功状态
+校验后，才会自动开通月付或年付。若回调丢失，订单轮询会按五秒最小间隔主动查单，
+并通过同一幂等授权路径恢复。
+
+```powershell
+$env:PAYMENT_PROVIDER = "chinaums-qr"
+$env:CHINAUMS_APP_ID = "由银联商务分配"
+$env:CHINAUMS_APP_KEY = "由银联商务分配"
+$env:CHINAUMS_MID = "15位商户号"
+$env:CHINAUMS_TID = "8位终端号"
+$env:CHINAUMS_MSG_SRC_ID = "4位来源编号"
+$env:CHINAUMS_NOTIFY_KEY = "通知通信密钥"
+```
+
+- `NODE_ENV=production` 固定访问生产开放平台；非生产环境固定访问测试平台。
+- 回调地址固定为 `${PUBLIC_BASE_URL}/v1/webhooks/chinaums`，必须能被银联商务通过公网
+  HTTPS 访问，反向代理必须保留原始表单正文。
+- 应用密钥与通知通信密钥按两个独立秘密保存，不进入 Git、XPI、数据库或日志。
+- 个人云闪付码、已有静态经营收款码及其图片都不能替代 `MID`、`TID`、`AppId`、
+  `AppKey`、来源编号和通知通信密钥。
+- 本地自动化测试只证明协议实现；拿到商户接口权限后仍须完成月付、年付、重复回调、
+  漏回调查单和退款的真实小额验收，才能对外称为已上线。
+
 ## 经营收款码桥接
 
 微信支付官方说明，微信收款商业版订单不能通过 API 查询。因此

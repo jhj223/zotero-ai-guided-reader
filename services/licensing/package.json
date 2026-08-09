@@ -1,7 +1,7 @@
 {
   "name": "zotero-ai-guided-reader-licensing",
   "version": "0.1.0",
-  "description": "Licensing and WeChat Native payment service for Zotero AI Guided Reader",
+  "description": "Licensing and QR payment service for Zotero AI Guided Reader",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-or-later",

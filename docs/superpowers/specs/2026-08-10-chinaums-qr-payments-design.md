@@ -12,7 +12,7 @@
 - 账单号以银联商务分配的 4 位 `msgSrcId` 开头，总长度大于 6 且不超过 31 个字符。
 - 请求认证使用 `OPEN-BODY-SIG`：先计算请求体的 SHA-256 小写十六进制摘要，再对 `appId + timestamp + nonce + bodyHash` 使用 `appKey` 做 HMAC-SHA256，最后 Base64 编码。
 - 支付结果以 `application/x-www-form-urlencoded` POST 到 `notifyUrl`。除 `sign` 外的已解码原始字段按 ASCII 参数名排序，以 `key=value&...` 拼接通信密钥后做 SHA-256；签名比较必须使用常量时间比较。
-- 只有 `billStatus=PAID` 且 `billPayment.status=TRADE_SUCCESS` 才能开通授权。必须同时核对 `mid`、`tid`、`instMid`、账单号和订单原始金额。
+- 只有 `billStatus=PAID` 且 `billPayment.status=TRADE_SUCCESS` 才能开通授权。必须核对账单号和优惠前订单原始金额；`mid`、`tid`、`instMid` 在通知协议中是可选字段，出现时必须匹配，缺失时由该商户独立通知通信密钥的有效签名确认来源。
 - 成功接收回调后返回纯文本 `SUCCESS`；失败返回 `FAILED`。银联商务会在 24 小时内重试未确认通知。
 - 回调缺失时使用 `POST /v1/netpay/bills/query` 查询账单状态，不使用其他支付产品的通用订单查询接口。
 
@@ -30,14 +30,14 @@
 
 新增 `ChinaumsQrProvider`，实现现有 `PaymentProvider`：
 
-1. 根据本地订单 ID、`msgSrcId` 和随机源生成唯一 `billNo`；
+1. 根据 `msgSrcId`、毫秒时间戳和密码学随机数生成唯一 `billNo`；
 2. 以严格 JSON 请求体调用测试或生产环境的固定白名单地址；
 3. 生成 `OPEN-BODY-SIG` 请求头；
 4. 限制请求时间、重定向和响应体大小；
 5. 仅接受 `errCode=SUCCESS`、商户字段完全匹配、`billNo` 原样返回且 `billQRCode` 来自银联商务允许的 HTTPS 主机；
 6. 返回 `providerOrderId=billNo` 与 `codeUrl=billQRCode`。
 
-同一客户端提供 `queryBill`，只接受与请求完全匹配的账单结果。查询返回已支付时，将 `notifyId` 缺失场景使用由 `billNo + seqId` 派生的稳定事件 ID，复用现有 webhook 幂等记录。
+同一客户端提供 `queryPayment`，只接受与请求完全匹配的账单结果。查询返回已支付时，在 `notifyId` 缺失场景使用由 `billNo + billPayment.paySeqId` 派生的稳定事件 ID，复用现有 webhook 幂等记录。
 
 ### 外部账单号映射
 
@@ -54,7 +54,7 @@
 - 对所有收到的字段验签，不静默丢弃未知但合法的银商扩展字段；
 - 只支持默认 SHA-256，显式拒绝 MD5；
 - 严格解析 `billPayment` JSON；
-- 校验商户、终端、业务类型、账单状态、交易状态、金额和支付时间；
+- 校验可选的商户、终端和业务类型回显，以及必需的账单状态、交易状态、优惠前账单金额和支付时间；
 - 通过 `provider_order_id` 找到本地订单后，调用现有 `recordWebhookPayment` 原子写入通知事件、订单状态和授权；
 - 重复 `notifyId` 返回成功但不重复延长授权；任何内容不一致的重放失败关闭。
 
@@ -96,7 +96,7 @@ CHINAUMS_NOTIFY_KEY=<支付通知通信密钥>
 - 回调验签失败或金额不符：返回 `FAILED`，绝不授权。
 - 回调重复：返回 `SUCCESS`，授权有效期不再增加。
 - 查询暂时失败：保持 pending，下次达到节流窗口后再查。
-- 本地订单过期后收到真实成功支付：仍按已有支付存储规则核对金额并授权，避免用户已付款却永远得不到权益；运营侧应依靠账单过期时间尽量避免该场景。
+- 本地订单过期后收到支付：只有支付时间不晚于账单过期时间才授权；晚于有效期的付款失败关闭并进入人工查单/退款流程，防止过期二维码继续开通。
 
 ## 明确排除
 

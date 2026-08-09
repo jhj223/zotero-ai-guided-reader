@@ -168,3 +168,68 @@ test("rejects missing or malformed static QR watcher configuration", () => {
     /RECEIPT_WATCHER_KEYS_JSON/,
   );
 });
+
+test("loads strict ChinaUMS QR config without merging its secrets", () => {
+  const config = loadConfig({
+    NODE_ENV: "production",
+    PAYMENT_PROVIDER: "chinaums-qr",
+    DATABASE_PATH: "D:/data/licensing.sqlite",
+    LICENSE_PRIVATE_KEY_PATH: "D:/secrets/private.pem",
+    LICENSE_PUBLIC_KEY_PATH: "D:/secrets/public.pem",
+    ENTITLEMENT_ISSUER: "https://license.example.com",
+    PUBLIC_BASE_URL: "https://license.example.com",
+    SOURCE_URL: "https://github.com/example/licensing-source",
+    CHINAUMS_APP_ID: "app-id-123",
+    CHINAUMS_APP_KEY: "application-secret-value",
+    CHINAUMS_MID: "898201612345678",
+    CHINAUMS_TID: "88880001",
+    CHINAUMS_MSG_SRC_ID: "AB12",
+    CHINAUMS_NOTIFY_KEY: "independent-notification-key",
+  });
+
+  assert.equal(config.paymentProvider, "chinaums-qr");
+  assert.deepEqual(config.chinaums, {
+    environment: "production",
+    appId: "app-id-123",
+    appKey: "application-secret-value",
+    merchantId: "898201612345678",
+    terminalId: "88880001",
+    messageSourceId: "AB12",
+    notificationKey: "independent-notification-key",
+    notifyUrl: "https://license.example.com/v1/webhooks/chinaums",
+  });
+});
+
+test("rejects malformed ChinaUMS merchant identifiers and missing keys", () => {
+  const common = {
+    NODE_ENV: "production",
+    PAYMENT_PROVIDER: "chinaums-qr",
+    DATABASE_PATH: "D:/data/licensing.sqlite",
+    LICENSE_PRIVATE_KEY_PATH: "D:/secrets/private.pem",
+    LICENSE_PUBLIC_KEY_PATH: "D:/secrets/public.pem",
+    ENTITLEMENT_ISSUER: "https://license.example.com",
+    PUBLIC_BASE_URL: "https://license.example.com",
+    SOURCE_URL: "https://github.com/example/licensing-source",
+    CHINAUMS_APP_ID: "app-id-123",
+    CHINAUMS_APP_KEY: "application-secret-value",
+    CHINAUMS_MID: "898201612345678",
+    CHINAUMS_TID: "88880001",
+    CHINAUMS_MSG_SRC_ID: "AB12",
+    CHINAUMS_NOTIFY_KEY: "independent-notification-key",
+  };
+
+  assert.throws(
+    () => loadConfig({ ...common, CHINAUMS_MID: "123" }),
+    /CHINAUMS_MID/,
+  );
+  assert.throws(
+    () => loadConfig({ ...common, CHINAUMS_TID: "bad" }),
+    /CHINAUMS_TID/,
+  );
+  assert.throws(
+    () => loadConfig({ ...common, CHINAUMS_MSG_SRC_ID: "bad-" }),
+    /CHINAUMS_MSG_SRC_ID/,
+  );
+  const { CHINAUMS_NOTIFY_KEY: _omitted, ...withoutNotifyKey } = common;
+  assert.throws(() => loadConfig(withoutNotifyKey), /CHINAUMS_NOTIFY_KEY/);
+});

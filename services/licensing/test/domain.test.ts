@@ -169,6 +169,37 @@ test("keeps catalog prices unchanged for non-static providers", () => {
   }
 });
 
+test("binds one unique ChinaUMS bill number to one local order", () => {
+  const { database, service } = setup();
+  try {
+    const order = service.createOrder(
+      "device-chinaums-one",
+      "pro_monthly",
+      "chinaums-qr",
+    );
+    const second = service.createOrder(
+      "device-chinaums-two",
+      "pro_monthly",
+      "chinaums-qr",
+    );
+    const billNo = "AB12202608102034567890000001";
+
+    assert.equal(service.bindProviderOrderId(order.id, billNo), billNo);
+    assert.equal(service.bindProviderOrderId(order.id, billNo), billNo);
+    assert.equal(service.findOrderByProviderOrderId(billNo)?.id, order.id);
+    assert.throws(
+      () => service.bindProviderOrderId(order.id, `${billNo}9`),
+      /already bound/i,
+    );
+    assert.throws(
+      () => service.bindProviderOrderId(second.id, billNo),
+      /already bound/i,
+    );
+  } finally {
+    database.close();
+  }
+});
+
 test("paid orders extend entitlement and duplicate callbacks are idempotent", () => {
   const { database, service } = setup();
   try {

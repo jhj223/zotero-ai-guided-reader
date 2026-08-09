@@ -168,7 +168,9 @@ Construct a form containing `billNo`, `billStatus=PAID`, `notifyId`, `seqId`, me
 ```ts
 const canonical = [...fields.entries()]
   .filter(([key]) => key !== "sign")
-  .sort(([left], [right]) => left.localeCompare(right, "en", { sensitivity: "variant" }))
+  .sort(([left], [right]) =>
+    left.localeCompare(right, "en", { sensitivity: "variant" }),
+  )
   .map(([key, value]) => `${key}=${value}`)
   .join("&");
 const sign = createHash("sha256")
@@ -192,7 +194,7 @@ Parse with `URLSearchParams`, reject duplicate names and bound the number/length
 ```ts
 licensing.recordWebhookPayment(notifyId, receivedAt, {
   orderId: order.id,
-  transactionId: `chinaums_${seqId}`,
+  transactionId: `chinaums_${billPayment.paySeqId}`,
   amountFen: totalAmount,
   paidAt,
 });

@@ -11,6 +11,8 @@ import { loadConfig } from "./config.js";
 import { LicensingStore } from "./database.js";
 import { LicensingService, type Plan } from "./domain.js";
 import { EntitlementSigner } from "./entitlements.js";
+import { ChinaumsQrProvider } from "./payments/chinaumsQr.js";
+import { ChinaumsWebhookProcessor } from "./payments/chinaumsWebhook.js";
 import { SandboxPaymentProvider } from "./payments/sandbox.js";
 import {
   StaticQrPaymentProvider,
@@ -74,6 +76,8 @@ const signer = new EntitlementSigner(
 let sandboxPaymentProvider: SandboxPaymentProvider | undefined;
 let staticQrBridge: StaticQrBridge | undefined;
 let webhookProcessor: WechatWebhookProcessor | undefined;
+let chinaumsPaymentProvider: ChinaumsQrProvider | undefined;
+let chinaumsWebhookProcessor: ChinaumsWebhookProcessor | undefined;
 const paymentProvider =
   config.paymentProvider === "sandbox"
     ? (sandboxPaymentProvider = new SandboxPaymentProvider(
@@ -96,36 +100,60 @@ const paymentProvider =
             loadStaticQrDataUrl(resolve(config.staticQr.imagePath)),
           );
         })()
-      : (() => {
-          const platformPublicKeys = new Map<string, KeyLike>(
-            Object.entries(config.wechat.platformKeyPaths).map(
-              ([serial, path]) => [serial, readFileSync(resolve(path), "utf8")],
-            ),
-          );
-          const wechatConfig: DirectWechatNativeConfig = {
-            mode: "direct",
-            merchantId: config.wechat.merchantId,
-            appId: config.wechat.appId,
-            merchantSerial: config.wechat.merchantSerial,
-            merchantPrivateKey: readFileSync(
-              resolve(config.wechat.merchantPrivateKeyPath),
-              "utf8",
-            ),
-            apiV3Key: config.wechat.apiV3Key,
-            notifyUrl: config.wechat.notifyUrl,
-            platformPublicKeys,
-          };
-          webhookProcessor = new WechatWebhookProcessor(
-            {
-              merchantId: wechatConfig.merchantId,
-              appId: wechatConfig.appId,
-              apiV3Key: wechatConfig.apiV3Key,
+      : config.paymentProvider === "wechat-native"
+        ? (() => {
+            const platformPublicKeys = new Map<string, KeyLike>(
+              Object.entries(config.wechat.platformKeyPaths).map(
+                ([serial, path]) => [
+                  serial,
+                  readFileSync(resolve(path), "utf8"),
+                ],
+              ),
+            );
+            const wechatConfig: DirectWechatNativeConfig = {
+              mode: "direct",
+              merchantId: config.wechat.merchantId,
+              appId: config.wechat.appId,
+              merchantSerial: config.wechat.merchantSerial,
+              merchantPrivateKey: readFileSync(
+                resolve(config.wechat.merchantPrivateKeyPath),
+                "utf8",
+              ),
+              apiV3Key: config.wechat.apiV3Key,
+              notifyUrl: config.wechat.notifyUrl,
               platformPublicKeys,
-            },
-            licensing,
-          );
-          return new WechatNativeProvider(wechatConfig);
-        })();
+            };
+            webhookProcessor = new WechatWebhookProcessor(
+              {
+                merchantId: wechatConfig.merchantId,
+                appId: wechatConfig.appId,
+                apiV3Key: wechatConfig.apiV3Key,
+                platformPublicKeys,
+              },
+              licensing,
+            );
+            return new WechatNativeProvider(wechatConfig);
+          })()
+        : (() => {
+            chinaumsPaymentProvider = new ChinaumsQrProvider({
+              environment: config.chinaums.environment,
+              appId: config.chinaums.appId,
+              appKey: config.chinaums.appKey,
+              merchantId: config.chinaums.merchantId,
+              terminalId: config.chinaums.terminalId,
+              messageSourceId: config.chinaums.messageSourceId,
+              notifyUrl: config.chinaums.notifyUrl,
+            });
+            chinaumsWebhookProcessor = new ChinaumsWebhookProcessor(
+              {
+                merchantId: config.chinaums.merchantId,
+                terminalId: config.chinaums.terminalId,
+                notificationKey: config.chinaums.notificationKey,
+              },
+              licensing,
+            );
+            return chinaumsPaymentProvider;
+          })();
 
 const server = createLicensingServer({
   licensing,
@@ -134,6 +162,8 @@ const server = createLicensingServer({
   sandboxPaymentProvider,
   staticQrBridge,
   webhookProcessor,
+  chinaumsPaymentProvider,
+  chinaumsWebhookProcessor,
   sourceUrl: config.sourceUrl,
 });
 server.listen(config.port, config.host, () => {

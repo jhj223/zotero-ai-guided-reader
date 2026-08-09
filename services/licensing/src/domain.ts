@@ -125,6 +125,31 @@ export class LicensingService {
     return order;
   }
 
+  bindProviderOrderId(orderId: string, providerOrderId: string): string {
+    if (!/^[A-Za-z0-9]{7,31}$/.test(providerOrderId)) {
+      throw new Error("INVALID_PROVIDER_ORDER_ID");
+    }
+    try {
+      return this.dependencies.store.bindProviderOrderId(
+        orderId,
+        providerOrderId,
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "PROVIDER_ORDER_ALREADY_BOUND"
+      ) {
+        throw new Error("Provider order is already bound.", { cause: error });
+      }
+      throw error;
+    }
+  }
+
+  findOrderByProviderOrderId(providerOrderId: string): StoredOrder | undefined {
+    if (!/^[A-Za-z0-9]{7,31}$/.test(providerOrderId)) return undefined;
+    return this.dependencies.store.findOrderByProviderOrderId(providerOrderId);
+  }
+
   getEntitlement(deviceId: string): EntitlementRecord | undefined {
     assertDeviceId(deviceId);
     return this.dependencies.store.getEntitlement(deviceId);
