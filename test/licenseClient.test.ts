@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { LicenseClient, type LicenseFetch } from "../src/runtime/licenseClient";
+import {
+  LicenseClient,
+  type LicenseFetch,
+  validateAfdianCheckoutUrl,
+} from "../src/runtime/licenseClient";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -78,6 +82,73 @@ test("accepts a configured JPEG merchant QR image", async () => {
 
   const order = await client.createOrder("device-123", "pro_monthly");
   assert.equal(order.qrDataUrl, "data:image/jpeg;base64,/9j/4AAQ");
+});
+
+test("accepts a fixed-origin Afdian checkout instead of a QR image", async () => {
+  const checkoutUrl =
+    "https://ifdian.net/order/create?plan_id=11111111111111111111111111111111&product_type=0&custom_order_id=co_123456789012345678901234";
+  const client = new LicenseClient({
+    baseUrl: "https://license.example.com",
+    clientVersion: "0.1.0",
+    fetchImpl: async () =>
+      jsonResponse(201, {
+        orderId: "order_123456",
+        pollToken: "poll_12345678",
+        status: "pending",
+        planId: "pro_monthly",
+        amountFen: 590,
+        expiresAt: "2026-08-11T12:15:00.000Z",
+        checkoutUrl,
+      }),
+  });
+
+  const order = await client.createOrder("device-123", "pro_monthly");
+  assert.equal(order.checkoutUrl, checkoutUrl);
+  assert.equal(order.qrDataUrl, undefined);
+});
+
+test("rejects active, misleading, or ambiguous checkout URLs", async () => {
+  for (const value of [
+    "javascript:alert(1)",
+    "http://ifdian.net/order/create?plan_id=11111111111111111111111111111111&product_type=0&custom_order_id=co_123456789012345678901234",
+    "https://ifdian.net.evil.test/order/create?plan_id=11111111111111111111111111111111&product_type=0&custom_order_id=co_123456789012345678901234",
+    "https://user@ifdian.net/order/create?plan_id=11111111111111111111111111111111&product_type=0&custom_order_id=co_123456789012345678901234",
+    "https://ifdian.net:444/order/create?plan_id=11111111111111111111111111111111&product_type=0&custom_order_id=co_123456789012345678901234",
+    "https://ifdian.net/order/create/other?plan_id=11111111111111111111111111111111&product_type=0&custom_order_id=co_123456789012345678901234",
+    "https://ifdian.net/order/create?plan_id=11111111111111111111111111111111&product_type=0&custom_order_id=co_123456789012345678901234#fragment",
+  ]) {
+    assert.throws(() => validateAfdianCheckoutUrl(value), /checkout/i);
+  }
+});
+
+test("requires exactly one checkout mechanism in an order response", async () => {
+  for (const paymentFields of [
+    {},
+    {
+      qrDataUrl: "data:image/png;base64,aGVsbG8=",
+      checkoutUrl:
+        "https://ifdian.net/order/create?plan_id=11111111111111111111111111111111&product_type=0&custom_order_id=co_123456789012345678901234",
+    },
+  ]) {
+    const client = new LicenseClient({
+      baseUrl: "https://license.example.com",
+      clientVersion: "0.1.0",
+      fetchImpl: async () =>
+        jsonResponse(201, {
+          orderId: "order_123456",
+          pollToken: "poll_12345678",
+          status: "pending",
+          planId: "pro_monthly",
+          amountFen: 590,
+          expiresAt: "2026-08-11T12:15:00.000Z",
+          ...paymentFields,
+        }),
+    });
+    await assert.rejects(
+      () => client.createOrder("device-123", "pro_monthly"),
+      /response/i,
+    );
+  }
 });
 
 test("polls with the order capability in an Authorization header", async () => {

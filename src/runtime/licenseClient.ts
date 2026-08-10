@@ -3,8 +3,17 @@ import type { LicensePlanId } from "../core/license";
 export type PaidPlanId = Exclude<LicensePlanId, "trial">;
 
 const MAX_RESPONSE_BYTES = 1024 * 1024;
+const MAX_CHECKOUT_URL_LENGTH = 2_048;
 const ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{8,256}$/;
+const AFDIAN_CHECKOUT_HOSTS = new Set([
+  "afdian.com",
+  "www.afdian.com",
+  "ifdian.net",
+  "www.ifdian.net",
+]);
+const AFDIAN_PLAN_ID_PATTERN = /^[a-f0-9]{32}$/;
+const CUSTOM_ORDER_ID_PATTERN = /^co_[A-Za-z0-9_-]{20,128}$/;
 
 export type LicenseFetch = (
   url: string,
@@ -30,7 +39,8 @@ export interface LicenseOrder {
   planId: PaidPlanId;
   amountFen: number;
   expiresAt: string;
-  qrDataUrl: string;
+  qrDataUrl?: string;
+  checkoutUrl?: string;
 }
 
 export interface PolledLicenseOrder {
@@ -332,16 +342,78 @@ function validateOrder(value: unknown): LicenseOrder {
     (object.planId !== "pro_monthly" && object.planId !== "pro_yearly") ||
     !Number.isSafeInteger(object.amountFen) ||
     Number(object.amountFen) <= 0 ||
-    !validIsoDate(object.expiresAt) ||
-    typeof object.qrDataUrl !== "string" ||
-    object.qrDataUrl.length > MAX_RESPONSE_BYTES ||
-    !/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/.test(
-      object.qrDataUrl,
-    )
+    !validIsoDate(object.expiresAt)
   ) {
     throw invalidResponse();
   }
+
+  const hasQr = object.qrDataUrl !== undefined;
+  const hasCheckout = object.checkoutUrl !== undefined;
+  if (hasQr === hasCheckout) throw invalidResponse();
+
+  if (
+    hasQr &&
+    (typeof object.qrDataUrl !== "string" ||
+      object.qrDataUrl.length > MAX_RESPONSE_BYTES ||
+      !/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/.test(
+        object.qrDataUrl,
+      ))
+  ) {
+    throw invalidResponse();
+  }
+  if (hasCheckout) {
+    if (typeof object.checkoutUrl !== "string") throw invalidResponse();
+    try {
+      validateAfdianCheckoutUrl(object.checkoutUrl);
+    } catch {
+      throw invalidResponse();
+    }
+  }
+
   return object as unknown as LicenseOrder;
+}
+
+export function validateAfdianCheckoutUrl(value: string): string {
+  if (value.length === 0 || value.length > MAX_CHECKOUT_URL_LENGTH) {
+    throw invalidCheckout();
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw invalidCheckout();
+  }
+  if (
+    url.protocol !== "https:" ||
+    !AFDIAN_CHECKOUT_HOSTS.has(url.hostname.toLowerCase()) ||
+    url.username ||
+    url.password ||
+    url.port ||
+    url.pathname !== "/order/create" ||
+    url.hash
+  ) {
+    throw invalidCheckout();
+  }
+
+  const expectedKeys = new Set(["plan_id", "product_type", "custom_order_id"]);
+  const seenKeys = new Set<string>();
+  for (const [key] of url.searchParams) {
+    if (!expectedKeys.has(key) || seenKeys.has(key)) throw invalidCheckout();
+    seenKeys.add(key);
+  }
+  if (
+    seenKeys.size !== expectedKeys.size ||
+    !AFDIAN_PLAN_ID_PATTERN.test(url.searchParams.get("plan_id") ?? "") ||
+    url.searchParams.get("product_type") !== "0" ||
+    !CUSTOM_ORDER_ID_PATTERN.test(url.searchParams.get("custom_order_id") ?? "")
+  ) {
+    throw invalidCheckout();
+  }
+  return value;
+}
+
+function invalidCheckout(): Error {
+  return new Error("Afdian checkout URL is invalid.");
 }
 
 function validatePolledOrder(value: unknown): PolledLicenseOrder {

@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { LicenseOrder, PaidPlanId } from "../runtime/licenseClient";
+import {
+  type LicenseOrder,
+  type PaidPlanId,
+  validateAfdianCheckoutUrl,
+} from "../runtime/licenseClient";
 import {
   getLicenseManager,
   type LicenseSnapshot,
@@ -15,6 +19,7 @@ export interface LicenseController {
   error: string;
   message: string;
   purchase(planId: PaidPlanId): Promise<void>;
+  openCheckout(): void;
   refreshOrder(): Promise<void>;
   dismissOrder(): void;
 }
@@ -116,6 +121,18 @@ export function useLicenseController(): LicenseController {
     }
   }, [order, pollOnce]);
 
+  const openCheckout = useCallback(() => {
+    setError("");
+    try {
+      if (!order?.checkoutUrl) {
+        throw new Error("当前订单没有可打开的付款链接。");
+      }
+      Zotero.launchURL(validateAfdianCheckoutUrl(order.checkoutUrl));
+    } catch (reason) {
+      setError(describeError(reason));
+    }
+  }, [order]);
+
   return {
     snapshot,
     order,
@@ -123,6 +140,7 @@ export function useLicenseController(): LicenseController {
     error,
     message,
     purchase,
+    openCheckout,
     refreshOrder,
     dismissOrder: () => setOrder(undefined),
   };

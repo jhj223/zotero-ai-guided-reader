@@ -39,26 +39,37 @@ export function LicensePanel({
             >
               <span>{plan.label}</span>
               <strong>{formatPrice(plan.priceFen)}</strong>
-              <small>{plan.durationDays} 天 · 主动扫码续费</small>
+              <small>{plan.durationDays} 天 · 手动续费</small>
             </button>
           ))}
         </div>
       )}
 
       {order && (
-        <div className="zg-payment">
-          <img
-            src={order.qrDataUrl}
-            alt={`${formatPrice(order.amountFen)} 微信支付二维码`}
-          />
+        <div
+          className={`zg-payment${order.checkoutUrl ? " zg-payment-link" : ""}`}
+        >
+          {order.qrDataUrl && (
+            <img
+              src={order.qrDataUrl}
+              alt={`${formatPrice(order.amountFen)} 付款二维码`}
+            />
+          )}
           <div className="zg-payment-meta">
             <strong>{formatPrice(order.amountFen)}</strong>
-            <span>请使用微信扫码，本次付款不会自动续扣。</span>
+            <span>
+              请打开爱发电付款页或扫码完成付款，本次付款不会自动续扣。
+            </span>
             <span>
               订单有效至 {new Date(order.expiresAt).toLocaleTimeString()}
             </span>
           </div>
           <div className="zg-payment-actions">
+            {order.checkoutUrl && (
+              <button disabled={busy} onClick={controller.openCheckout}>
+                打开爱发电付款
+              </button>
+            )}
             <button
               disabled={busy}
               onClick={() => void controller.refreshOrder()}
