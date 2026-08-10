@@ -38,7 +38,9 @@ describe("D1 licensing state", () => {
     expect(created.pollToken).toMatch(/^poll_[A-Za-z0-9_-]{20,}$/);
     expect(stored?.pollTokenHash).toMatch(/^[0-9a-f]{64}$/);
     expect(stored?.pollTokenHash).not.toContain(created.pollToken);
-    expect(await service.pollOrder(created.orderId, "wrong-token")).toBeUndefined();
+    expect(
+      await service.pollOrder(created.orderId, "wrong-token"),
+    ).toBeUndefined();
     expect(await service.pollOrder(created.orderId, created.pollToken)).toEqual(
       stored,
     );
@@ -62,10 +64,7 @@ describe("D1 licensing state", () => {
     });
     expect(first.entitlement.validUntil).toBe(NOW + 7 * DAY_MS + 30 * DAY_MS);
 
-    const yearly = await service.createOrder(
-      "device_extend_001",
-      "pro_yearly",
-    );
+    const yearly = await service.createOrder("device_extend_001", "pro_yearly");
     const second = await service.completePayment({
       orderId: yearly.orderId,
       eventId: "event_yearly_001",
@@ -82,10 +81,7 @@ describe("D1 licensing state", () => {
 
   it("makes replayed and concurrent payment completion idempotent", async () => {
     const { service } = setup();
-    const order = await service.createOrder(
-      "device_replay_001",
-      "pro_monthly",
-    );
+    const order = await service.createOrder("device_replay_001", "pro_monthly");
     const input = {
       orderId: order.orderId,
       eventId: "event_replay_001",
@@ -110,9 +106,82 @@ describe("D1 licensing state", () => {
     expect(replay.entitlement.validUntil).toBe(NOW + 30 * DAY_MS);
   });
 
+  it("atomically preserves extensions from two different paid orders", async () => {
+    const { service } = setup();
+    const first = await service.createOrder(
+      "device_parallel_001",
+      "pro_monthly",
+    );
+    const second = await service.createOrder(
+      "device_parallel_001",
+      "pro_monthly",
+    );
+
+    const completed = await Promise.all([
+      service.completePayment({
+        orderId: first.orderId,
+        eventId: "event_parallel_001",
+        providerTransactionId: "202608118801",
+        amountFen: 590,
+        paidAt: NOW,
+        receivedAt: NOW + 1_000,
+        verifiedAt: NOW + 2_000,
+      }),
+      service.completePayment({
+        orderId: second.orderId,
+        eventId: "event_parallel_002",
+        providerTransactionId: "202608118802",
+        amountFen: 590,
+        paidAt: NOW,
+        receivedAt: NOW + 1_000,
+        verifiedAt: NOW + 2_000,
+      }),
+    ]);
+
+    expect(completed.every((result) => !result.isReplay)).toBe(true);
+    expect(
+      (await service.getEntitlement("device_parallel_001"))?.validUntil,
+    ).toBe(NOW + 60 * DAY_MS);
+  });
+
   it("does not return another device's entitlement", async () => {
     const { service } = setup();
     await service.startTrial("device_owner_001");
     expect(await service.getEntitlement("device_other_001")).toBeUndefined();
+  });
+
+  it("prunes old unpaid orders and their orphaned device rows", async () => {
+    const createdAt = NOW - 40 * DAY_MS;
+    const { service, store } = setup(createdAt);
+    const order = await service.createOrder(
+      "device_abandoned_order_001",
+      "pro_monthly",
+    );
+    await store.expirePendingOrders(NOW);
+
+    expect(
+      await store.pruneExpiredOrderArtifacts(NOW - 30 * DAY_MS, 500),
+    ).toEqual({ orders: 1, devices: 1 });
+    expect(await store.findOrder(order.orderId)).toBeUndefined();
+  });
+
+  it("deletes expired rate limits in bounded batches", async () => {
+    const { store } = setup();
+    for (let index = 0; index < 5; index += 1) {
+      await store.consumeRateLimit({
+        keyHash: String(index).padStart(64, "a"),
+        now: NOW - 10_000,
+        windowMs: 1_000,
+        limit: 1,
+      });
+    }
+
+    expect(await store.deleteExpiredRateLimits(NOW, 2)).toBe(2);
+    const remaining = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM rate_limits WHERE expires_at <= ?1",
+    )
+      .bind(NOW)
+      .first<{ count: number }>();
+    expect(remaining?.count).toBe(3);
   });
 });

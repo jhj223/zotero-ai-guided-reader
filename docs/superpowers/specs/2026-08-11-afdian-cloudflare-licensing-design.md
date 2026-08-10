@@ -33,7 +33,7 @@ paid Workers plan without changing the plugin protocol.
 
 Create `services/licensing-worker` with one Worker entry point and focused
 modules for configuration, D1 persistence, entitlement signing, Afdian API
-access, webhook verification, and HTTP routing.
+access, webhook parsing, and HTTP routing.
 
 It exposes the existing endpoints:
 
@@ -90,22 +90,24 @@ automatic renewal.
 2. The Worker creates an opaque order and returns its poll token and Afdian
    checkout URL containing `custom_order_id`.
 3. The user completes payment on Afdian.
-4. Afdian sends its signed webhook. The Worker verifies the documented
-   RSA-SHA256 signature before reading the event as a payment signal.
+4. Afdian sends its documented webhook. Even though the current platform
+   documents a webhook signature, the Worker deliberately reads only the
+   transaction ID and correlation ID as a minimal query hint and never grants
+   from callback content alone.
 5. The Worker calls Afdian `query-order` using the server-only user ID and API
    token. The API request uses Afdian's documented MD5 request signature.
 6. The queried order must exactly match all of the following:
-   - webhook `out_trade_no`;
    - local `custom_order_id`;
    - configured Afdian `plan_id` for the local plan;
    - server-owned amount (`5.90` or `49.00`);
    - successful status `2`;
-   - regular subscription product type `0`.
+   - regular subscription product type `0`;
+   - a valid provider creation time.
 7. Only then does one atomic/idempotent completion operation extend the
    entitlement and mark the local order paid.
 8. Plugin polling receives a signed entitlement token and activates Pro.
 
-Webhook failure does not grant access. If a valid webhook is delayed or missed,
+Webhook failure does not grant access. If a webhook is delayed or missed,
 polling and the scheduled reconciliation handler query Afdian and invoke the
 same verified completion path.
 
@@ -147,14 +149,14 @@ placeholder production values.
 - HTTPS-only public and checkout URLs.
 - Fixed Afdian API and checkout origins; external redirects are rejected.
 - Strict JSON size, content-type, field, length, enum, and money validation.
-- RSA-SHA256 webhook signature verification using the documented Afdian public
-  key.
+- Untrusted, strictly parsed Webhook hints with source throttling and no direct
+  entitlement grant.
 - Mandatory Afdian API re-query before activation.
 - Exact plan, amount, local-order, provider-order, status, and product checks.
 - Unique provider transaction processing and conditional order completion.
 - Hashed polling tokens and device/source rate limits.
 - Constant-time comparison for locally computed secret-derived values.
-- No access grant on timeouts, malformed responses, signature failures,
+- No access grant on timeouts, malformed responses, API signature failures,
   provider errors, ambiguous matches, or D1 failures.
 - Minimal security headers and no permissive CORS.
 - Logs contain opaque event IDs and error categories, never tokens, payment
@@ -171,7 +173,7 @@ Worker tests cover:
 
 - configuration and URL allowlists;
 - Afdian request signing and API response validation;
-- valid and invalid webhook signatures;
+- valid and forged webhook hints;
 - wrong plan, amount, order, status, and product type;
 - duplicate webhook and reconciliation idempotency;
 - trial uniqueness and paid-extension rules;

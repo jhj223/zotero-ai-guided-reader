@@ -14,6 +14,9 @@ export interface RefreshTokenClaims {
   deviceId: string;
   issuer: string;
   audience: string;
+  issuedAt: number;
+  offlineUntil: number;
+  validUntil: number;
 }
 
 export function randomOpaqueId(prefix: string): string {
@@ -108,7 +111,20 @@ export function verifyRefreshToken(
     values.version !== 1 ||
     values.deviceId !== expectedDeviceId ||
     values.issuer !== config.issuer ||
-    values.audience !== config.audience
+    values.audience !== config.audience ||
+    typeof values.tokenId !== "string" ||
+    !/^[A-Za-z0-9_-]{8,128}$/.test(values.tokenId) ||
+    (values.kind !== "trial" && values.kind !== "pro") ||
+    (values.planId !== "trial" &&
+      values.planId !== "pro_monthly" &&
+      values.planId !== "pro_yearly") ||
+    (values.kind === "trial" && values.planId !== "trial") ||
+    (values.kind === "pro" && values.planId === "trial") ||
+    !validTimestamp(values.issuedAt) ||
+    !validTimestamp(values.offlineUntil) ||
+    !validTimestamp(values.validUntil) ||
+    values.issuedAt > values.offlineUntil ||
+    values.offlineUntil > values.validUntil
   ) {
     throw new Error("INVALID_ENTITLEMENT_TOKEN");
   }
@@ -123,7 +139,14 @@ export function verifyRefreshToken(
     deviceId: expectedDeviceId,
     issuer: config.issuer,
     audience: config.audience,
+    issuedAt: values.issuedAt,
+    offlineUntil: values.offlineUntil,
+    validUntil: values.validUntil,
   };
+}
+
+function validTimestamp(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) > 0;
 }
 
 export function pemFromDer(
@@ -136,9 +159,13 @@ export function pemFromDer(
 }
 
 function derFromPem(pem: string, label: "PRIVATE KEY"): ArrayBuffer {
-  const match = pem.trim().match(
-    new RegExp(`^-----BEGIN ${label}-----([A-Za-z0-9+/=\\s]+)-----END ${label}-----$`),
-  );
+  const match = pem
+    .trim()
+    .match(
+      new RegExp(
+        `^-----BEGIN ${label}-----([A-Za-z0-9+/=\\s]+)-----END ${label}-----$`,
+      ),
+    );
   if (!match) throw new Error("Entitlement private key is invalid.");
   const binary = atob(match[1].replace(/\s/g, ""));
   return Uint8Array.from(binary, (character) => character.charCodeAt(0)).buffer;
@@ -150,7 +177,9 @@ function encodeJson(value: unknown): string {
 
 function decodeJson(value: string): unknown {
   try {
-    return JSON.parse(new TextDecoder().decode(base64UrlToBytes(value))) as unknown;
+    return JSON.parse(
+      new TextDecoder().decode(base64UrlToBytes(value)),
+    ) as unknown;
   } catch {
     throw new Error("INVALID_ENTITLEMENT_TOKEN");
   }
@@ -174,6 +203,8 @@ function base64UrlToBytes(value: string): Uint8Array<ArrayBuffer> {
     throw new Error("INVALID_ENTITLEMENT_TOKEN");
   }
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-  const binary = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="));
+  const binary = atob(
+    normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="),
+  );
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }

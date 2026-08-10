@@ -4,7 +4,7 @@
 
 **Goal:** Deploy an always-on Cloudflare Worker/D1 licensing service that grants the existing Zotero plugin's monthly or yearly Pro entitlement only after a verified Afdian payment.
 
-**Architecture:** Add a separate Worker service so the existing Node/SQLite payment implementations remain stable. The Worker preserves the plugin's current licensing endpoints, adds an Afdian checkout URL and webhook, stores state in D1, verifies every payment through both RSA-signed webhook data and the Afdian query API, and issues the existing RS256 entitlement format. The plugin accepts either the existing QR response or the new allowlisted checkout URL.
+**Architecture:** Add a separate Worker service so the existing Node/SQLite payment implementations remain stable. The Worker preserves the plugin's current licensing endpoints, adds an Afdian checkout URL and webhook, stores state in D1, treats the webhook only as a minimal query hint even when a signature is present, verifies every payment through the creator-authenticated Afdian query API, and issues the existing RS256 entitlement format. The plugin accepts either the existing QR response or the new allowlisted checkout URL.
 
 **Tech Stack:** TypeScript 5.9, Cloudflare Workers, D1, Hono, Wrangler, Vitest 4 with `@cloudflare/vitest-pool-workers`, Web Crypto/Workers `node:crypto`, React 19, Zotero 9.
 
@@ -20,7 +20,7 @@
 - `services/licensing-worker/src/config.ts`: strict environment and plan mapping validation.
 - `services/licensing-worker/src/crypto.ts`: opaque IDs, hashes, constant-time comparison, PEM/JWK helpers, and RS256 entitlement tokens.
 - `services/licensing-worker/src/store.ts`: prepared D1 operations and atomic/idempotent payment completion.
-- `services/licensing-worker/src/afdian.ts`: checkout URL construction, webhook RSA verification, API request signing, bounded response parsing, and exact payment checks.
+- `services/licensing-worker/src/afdian.ts`: checkout URL construction, strict webhook parsing, API request signing, bounded response parsing, and exact payment checks.
 - `services/licensing-worker/src/service.ts`: trial, order, poll, refresh, payment, and reconciliation domain operations.
 - `services/licensing-worker/src/index.ts`: Hono routes, strict request limits, structured errors, headers, and scheduled handler.
 - `services/licensing-worker/test/*.test.ts`: Worker-runtime unit and integration tests.
@@ -34,6 +34,7 @@
 ### Task 1: Scaffold and Validate the Worker Boundary
 
 **Files:**
+
 - Create: `services/licensing-worker/package.json`
 - Create: `services/licensing-worker/tsconfig.json`
 - Create: `services/licensing-worker/wrangler.jsonc`
@@ -106,6 +107,7 @@ feat(licensing-worker): scaffold Cloudflare runtime
 ### Task 2: Add D1 State and Entitlement Compatibility
 
 **Files:**
+
 - Create: `services/licensing-worker/migrations/0001_initial.sql`
 - Create: `services/licensing-worker/src/crypto.ts`
 - Create: `services/licensing-worker/src/store.ts`
@@ -160,15 +162,16 @@ feat(licensing-worker): add D1 entitlement state
 ### Task 3: Implement the Verified Afdian Adapter
 
 **Files:**
+
 - Create: `services/licensing-worker/src/afdian.ts`
 - Create: `services/licensing-worker/test/afdian.test.ts`
 
 - [ ] **Step 1: Write failing Afdian protocol tests**
 
 Cover exact checkout URL generation, unsafe host rejection, API MD5 signing,
-RSA-SHA256 webhook verification, response size/content-type limits, invalid
-JSON, redirects, timeouts, provider error codes, and exact order matching for
-both configured plans.
+minimal webhook hint parsing without direct trust, explicit pagination
+metadata, response size/content-type limits, invalid JSON, redirects, timeouts,
+provider error codes, and exact queried-order matching for both configured plans.
 
 - [ ] **Step 2: Verify RED**
 
@@ -183,9 +186,8 @@ Expected: FAIL because the adapter is absent.
 - [ ] **Step 3: Implement the documented protocol**
 
 Build checkout URLs only on `https://ifdian.net/order/create`, with
-`product_type=0`, configured `plan_id`, and opaque `custom_order_id`. Verify the
-webhook signature against the official Afdian public key over
-`out_trade_no + user_id + plan_id + total_amount`. Then query
+`product_type=0`, configured `plan_id`, and opaque `custom_order_id`. Treat the
+documented unsigned Webhook only as an order hint. Then query
 `https://ifdian.net/api/open/query-order` with:
 
 ```ts
@@ -210,6 +212,7 @@ feat(payments): verify Afdian orders
 ### Task 4: Expose the Worker API and Reconciliation Flow
 
 **Files:**
+
 - Create: `services/licensing-worker/src/index.ts`
 - Create: `services/licensing-worker/test/server.test.ts`
 - Create: `services/licensing-worker/test/reconciliation.test.ts`
@@ -218,7 +221,7 @@ feat(payments): verify Afdian orders
 
 Test every existing plugin endpoint, strict method/content-type/body handling,
 structured errors, security headers, no permissive CORS, bearer polling,
-monthly and yearly checkout responses, valid webhook completion, forged and
+monthly and yearly checkout responses, verified webhook/query completion, forged and
 duplicate webhook rejection, and no secret-bearing response or log value.
 
 - [ ] **Step 2: Verify RED**
@@ -233,7 +236,7 @@ backward compatible. Webhook success must return Afdian's required JSON
 acknowledgement:
 
 ```json
-{"ec":200,"em":""}
+{ "ec": 200, "em": "" }
 ```
 
 The scheduled handler selects a bounded page of recent pending orders, queries
@@ -254,6 +257,7 @@ feat(licensing-worker): expose Afdian licensing API
 ### Task 5: Add Provider-Neutral Checkout to the Zotero Plugin
 
 **Files:**
+
 - Modify: `src/runtime/licenseClient.ts`
 - Modify: `src/ui/useLicenseController.ts`
 - Modify: `src/ui/LicensePanel.tsx`
@@ -298,6 +302,7 @@ feat(licensing): open Afdian checkout securely
 ### Task 6: Document and Prepare Secure Deployment
 
 **Files:**
+
 - Create: `services/licensing-worker/README.md`
 - Modify: `.env.example`
 - Modify: `README.md`
@@ -356,6 +361,7 @@ docs(payments): document Afdian Worker deployment
 ### Task 7: Provision, Deploy, and Perform Live Acceptance
 
 **Files:**
+
 - Modify: `services/licensing-worker/wrangler.jsonc` only when Wrangler writes the provisioned D1 identifier.
 - Create outside Git: restricted RSA keys and local deployment input.
 - Create ignored: `config/commercial-release.json` for the deployed public URL and public JWK.

@@ -1,25 +1,17 @@
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { pemFromDer } from "../src/crypto";
+import { hashText, pemFromDer } from "../src/crypto";
 import { createWorkerApp } from "../src/index";
 import type { WorkerEnv } from "../src/config";
 
 const NOW = Date.UTC(2026, 7, 11, 8);
 let workerEnv: WorkerEnv;
-let afdianPrivateKey: CryptoKey;
-let afdianPublicPem: string;
 
 beforeAll(async () => {
   const entitlementPair = await generatePair();
   const entitlementDer = await crypto.subtle.exportKey(
     "pkcs8",
     entitlementPair.privateKey,
-  );
-  const afdianPair = await generatePair();
-  afdianPrivateKey = afdianPair.privateKey;
-  afdianPublicPem = pemFromDer(
-    await crypto.subtle.exportKey("spki", afdianPair.publicKey),
-    "PUBLIC KEY",
   );
   workerEnv = {
     DB: env.DB,
@@ -72,7 +64,9 @@ describe("licensing Worker API", () => {
       status: "trial",
       validUntil: new Date(NOW + 7 * 86_400_000).toISOString(),
     });
-    expect(String(issued.body.entitlementToken)).toMatch(/^[^.]+\.[^.]+\.[^.]+$/);
+    expect(String(issued.body.entitlementToken)).toMatch(
+      /^[^.]+\.[^.]+\.[^.]+$/,
+    );
 
     const refreshed = await jsonRequest(app, "/v1/entitlements/refresh", {
       deviceId: "device_server_trial_001",
@@ -83,6 +77,27 @@ describe("licensing Worker API", () => {
     expect(refreshed.body).toMatchObject({
       status: "trial",
       validUntil: issued.body.validUntil,
+    });
+  });
+
+  it("refuses to refresh a fully expired signed entitlement", async () => {
+    let currentTime = NOW;
+    const app = createWorkerApp({ now: () => currentTime });
+    const issued = await jsonRequest(app, "/v1/trials", {
+      deviceId: "device_expired_refresh_001",
+      clientVersion: "0.1.0",
+    });
+    currentTime += 8 * 86_400_000;
+
+    const refreshed = await jsonRequest(app, "/v1/entitlements/refresh", {
+      deviceId: "device_expired_refresh_001",
+      clientVersion: "0.1.0",
+      entitlementToken: issued.body.entitlementToken,
+    });
+
+    expect(refreshed.response.status).toBe(401);
+    expect(refreshed.body).toMatchObject({
+      error: { code: "INVALID_ENTITLEMENT" },
     });
   });
 
@@ -109,15 +124,18 @@ describe("licensing Worker API", () => {
     }
   });
 
-  it("activates only after a signed webhook and matching API query", async () => {
-    let expectedOrder: Record<string, unknown> | undefined;
+  it("treats a webhook only as a hint and grants after an API match", async () => {
+    const providerState: { order?: Record<string, unknown> } = {};
     const fetcher = vi.fn(async () =>
-      Response.json({ ec: 200, em: "", data: { list: [expectedOrder] } }),
+      Response.json({
+        ec: 200,
+        em: "",
+        data: { list: [providerState.order] },
+      }),
     );
     const app = createWorkerApp({
       now: () => NOW,
       fetcher,
-      afdianPublicKeyPem: afdianPublicPem,
     });
     const created = await jsonRequest(app, "/v1/orders", {
       deviceId: "device_webhook_001",
@@ -125,7 +143,7 @@ describe("licensing Worker API", () => {
       planId: "pro_monthly",
     });
     const checkout = new URL(String(created.body.checkoutUrl));
-    expectedOrder = {
+    providerState.order = {
       out_trade_no: "202608110000000000000099",
       custom_order_id: checkout.searchParams.get("custom_order_id"),
       user_id: "33333333333333333333333333333333",
@@ -135,7 +153,7 @@ describe("licensing Worker API", () => {
       product_type: 0,
       create_time: Math.floor(NOW / 1000) + 60,
     };
-    const webhook = await signedWebhook(expectedOrder);
+    const webhook = webhookPayload(providerState.order);
 
     const accepted = await jsonRequest(app, "/v1/webhooks/afdian", webhook);
     expect(accepted.response.status).toBe(200);
@@ -164,27 +182,16 @@ describe("licensing Worker API", () => {
       fetcher: async () => {
         throw new Error("must not query for a forged callback");
       },
-      afdianPublicKeyPem: afdianPublicPem,
     });
-    const forged = await jsonRequest(app, "/v1/webhooks/afdian", {
+    const malformed = await jsonRequest(app, "/v1/webhooks/afdian", {
       ec: 200,
       em: "ok",
-      sign: "Zm9yZ2Vk",
-      data: {
-        type: "order",
-        order: {
-          out_trade_no: "202608110000000000000088",
-          custom_order_id: "co_123456789012345678901234",
-          user_id: "33333333333333333333333333333333",
-          plan_id: workerEnv.AFDIAN_MONTHLY_PLAN_ID,
-          total_amount: "5.90",
-          status: 2,
-          product_type: 0,
-        },
-      },
+      data: { type: "order", order: { out_trade_no: "invalid" } },
     });
-    expect(forged.response.status).toBe(401);
-    expect(forged.body).toMatchObject({ error: { code: "INVALID_WEBHOOK" } });
+    expect(malformed.response.status).toBe(400);
+    expect(malformed.body).toMatchObject({
+      error: { code: "INVALID_WEBHOOK" },
+    });
 
     expect((await app.request("/v1/trials", {}, workerEnv)).status).toBe(405);
     expect(
@@ -206,6 +213,36 @@ describe("licensing Worker API", () => {
       priceFen: 1,
     });
     expect(unknown.response.status).toBe(400);
+  });
+
+  it("rate limits polling by source as well as by order", async () => {
+    const app = createWorkerApp({ now: () => NOW });
+    const created = await jsonRequest(app, "/v1/orders", {
+      deviceId: "device_poll_source_001",
+      clientVersion: "0.1.0",
+      planId: "pro_monthly",
+    });
+    const sourceIp = "203.0.113.77";
+    const response = await app.request(
+      `/v1/orders/${created.body.orderId}`,
+      {
+        headers: {
+          authorization: `Bearer ${created.body.pollToken}`,
+          "cf-connecting-ip": sourceIp,
+        },
+      },
+      workerEnv,
+    );
+    expect(response.status).toBe(200);
+    const keyHash = await hashText(
+      `${workerEnv.RATE_LIMIT_PEPPER}\0poll-source\0${sourceIp}`,
+    );
+    const row = await env.DB.prepare(
+      "SELECT count FROM rate_limits WHERE key_hash = ?1",
+    )
+      .bind(keyHash)
+      .first<{ count: number }>();
+    expect(row?.count).toBe(1);
   });
 });
 
@@ -229,18 +266,17 @@ async function jsonRequest(
   };
 }
 
-async function signedWebhook(order: Record<string, unknown>) {
-  const signed = `${order.out_trade_no}${order.user_id}${order.plan_id}${order.total_amount}`;
-  const signature = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    afdianPrivateKey,
-    new TextEncoder().encode(signed),
-  );
+function webhookPayload(order: Record<string, unknown>) {
   return {
     ec: 200,
     em: "ok",
-    sign: bytesToBase64(new Uint8Array(signature)),
-    data: { type: "order", order },
+    data: {
+      type: "order",
+      order: {
+        out_trade_no: order.out_trade_no,
+        custom_order_id: order.custom_order_id,
+      },
+    },
   };
 }
 
@@ -255,10 +291,4 @@ async function generatePair() {
     true,
     ["sign", "verify"],
   );
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
 }

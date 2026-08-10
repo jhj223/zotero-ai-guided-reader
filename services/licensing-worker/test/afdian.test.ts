@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { pemFromDer } from "../src/crypto";
 import type { StoredOrder } from "../src/store";
 import {
   assertAfdianOrderMatches,
@@ -8,7 +7,7 @@ import {
   createAfdianApiEnvelope,
   parseAfdianWebhook,
   queryAfdianOrder,
-  verifyAfdianWebhookSignature,
+  queryRecentAfdianOrders,
   type AfdianOrder,
 } from "../src/afdian";
 
@@ -31,9 +30,7 @@ const localOrder: StoredOrder = {
   expiresAt: 1_786_694_400_000,
 };
 
-function providerOrder(
-  overrides: Partial<AfdianOrder> = {},
-): AfdianOrder {
+function providerOrder(overrides: Partial<AfdianOrder> = {}): AfdianOrder {
   return {
     outTradeNo: "202608110000000000000001",
     customOrderId: localOrder.customOrderId,
@@ -74,10 +71,7 @@ function queryResponse(order: AfdianOrder): Response {
 describe("Afdian adapter", () => {
   it("builds a fixed-origin checkout URL with opaque local correlation", () => {
     expect(
-      buildAfdianCheckoutUrl(
-        config.monthlyPlanId,
-        localOrder.customOrderId,
-      ),
+      buildAfdianCheckoutUrl(config.monthlyPlanId, localOrder.customOrderId),
     ).toBe(
       "https://ifdian.net/order/create?plan_id=11111111111111111111111111111111&product_type=0&custom_order_id=co_123456789012345678901234",
     );
@@ -105,65 +99,40 @@ describe("Afdian adapter", () => {
     });
   });
 
-  it("verifies RSA-SHA256 webhook data and rejects a changed order", async () => {
-    const pair = await crypto.subtle.generateKey(
-      {
-        name: "RSASSA-PKCS1-v1_5",
-        modulusLength: 2048,
-        publicExponent: new Uint8Array([1, 0, 1]),
-        hash: "SHA-256",
-      },
-      true,
-      ["sign", "verify"],
-    );
-    const order = providerOrder();
-    const signature = await crypto.subtle.sign(
-      "RSASSA-PKCS1-v1_5",
-      pair.privateKey,
-      new TextEncoder().encode(
-        `${order.outTradeNo}${order.userId}${order.planId}${order.totalAmount}`,
-      ),
-    );
-    const publicDer = await crypto.subtle.exportKey("spki", pair.publicKey);
-    const publicPem = pemFromDer(publicDer, "PUBLIC KEY");
-    const encoded = bytesToBase64(new Uint8Array(signature));
-
-    await expect(
-      verifyAfdianWebhookSignature(order, encoded, publicPem),
-    ).resolves.toBe(true);
-    await expect(
-      verifyAfdianWebhookSignature(
-        { ...order, totalAmount: "59.00" },
-        encoded,
-        publicPem,
-      ),
-    ).resolves.toBe(false);
-  });
-
-  it("parses a signed webhook envelope without trusting it as payment", () => {
-    const order = providerOrder();
+  it("parses only the minimum webhook fields needed as an order hint", () => {
     const parsed = parseAfdianWebhook({
       ec: 200,
       em: "ok",
-      sign: "c2lnbmF0dXJl",
       data: {
         type: "order",
         order: {
-          out_trade_no: order.outTradeNo,
-          custom_order_id: order.customOrderId,
-          user_id: order.userId,
-          plan_id: order.planId,
-          total_amount: order.totalAmount,
-          status: order.status,
-          product_type: order.productType,
-          create_time: order.createTime,
+          out_trade_no: providerOrder().outTradeNo,
+          custom_order_id: providerOrder().customOrderId,
         },
       },
     });
 
-    expect(parsed.order).toEqual(order);
-    expect(parsed.signature).toBe("c2lnbmF0dXJl");
+    expect(parsed).toEqual({
+      outTradeNo: providerOrder().outTradeNo,
+      customOrderId: providerOrder().customOrderId,
+    });
     expect(() => parseAfdianWebhook({ data: { type: "order" } })).toThrow();
+  });
+
+  it("requests an explicit page size and uses provider pagination metadata", async () => {
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      const envelope = JSON.parse(String(init?.body)) as { params: string };
+      expect(JSON.parse(envelope.params)).toEqual({ page: 3, per_page: 100 });
+      return Response.json({
+        ec: 200,
+        em: "",
+        data: { list: [], total_count: 201, total_page: 3 },
+      });
+    });
+
+    await expect(
+      queryRecentAfdianOrders(config, { page: 3, fetcher }),
+    ).resolves.toEqual({ orders: [], totalPage: 3 });
   });
 
   it("queries one bounded order without redirects and validates exact fields", async () => {
@@ -173,9 +142,7 @@ describe("Afdian adapter", () => {
       expect(init?.method).toBe("POST");
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       expect(body.user_id).toBe(config.userId);
-      expect(body.params).toBe(
-        `{"out_trade_no":"${order.outTradeNo}"}`,
-      );
+      expect(body.params).toBe(`{"out_trade_no":"${order.outTradeNo}"}`);
       return queryResponse(order);
     });
 
@@ -185,23 +152,31 @@ describe("Afdian adapter", () => {
     });
     expect(queried).toEqual(order);
     expect(() =>
-      assertAfdianOrderMatches(localOrder, queried!, order, config),
+      assertAfdianOrderMatches(localOrder, queried!, config),
     ).not.toThrow();
   });
 
-  it("rejects mismatched plan, amount, custom ID, payer, and status", () => {
-    const webhook = providerOrder();
+  it("rejects mismatched plan, amount, custom ID, and status", () => {
     for (const queried of [
       providerOrder({ planId: config.yearlyPlanId }),
       providerOrder({ totalAmount: "59.00", amountFen: 5900 }),
       providerOrder({ customOrderId: "co_999999999999999999999999" }),
-      providerOrder({ userId: "44444444444444444444444444444444" }),
       providerOrder({ status: 1 }),
       providerOrder({ productType: 1 }),
     ]) {
       expect(() =>
-        assertAfdianOrderMatches(localOrder, queried, webhook, config),
+        assertAfdianOrderMatches(localOrder, queried, config),
       ).toThrow();
+    }
+  });
+
+  it("accepts whole-yuan and one-decimal provider amounts", async () => {
+    for (const totalAmount of ["49", "49.0", "49.00"]) {
+      const order = providerOrder({ totalAmount, amountFen: 4_900 });
+      const queried = await queryAfdianOrder(order.outTradeNo, config, {
+        fetcher: async () => queryResponse(order),
+      });
+      expect(queried?.amountFen).toBe(4_900);
     }
   });
 
@@ -238,9 +213,3 @@ describe("Afdian adapter", () => {
     ).rejects.toThrow(/timeout/i);
   });
 });
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}

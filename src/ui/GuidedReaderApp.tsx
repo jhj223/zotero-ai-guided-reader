@@ -704,7 +704,7 @@ const styles = `
 .zg-plan-grid button span, .zg-plan-grid button strong, .zg-plan-grid button small { max-width: 100%; overflow-wrap: anywhere; }
 .zg-plan-grid button strong { color: #174f86; font-size: 14px; }
 .zg-plan-grid button small { color: #647282; font-size: 10px; }
-.zg-payment { align-items: center; display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(136px, 1fr)); margin-top: 8px; min-width: 0; }
+.zg-payment { align-items: center; display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(136px, 100%), 1fr)); margin-top: 8px; min-width: 0; }
 .zg-payment-link { grid-template-columns: minmax(0, 1fr); }
 .zg-payment img { background: white; border: 1px solid #d3dce6; box-sizing: border-box; display: block; height: auto; max-width: 100%; width: 136px; }
 .zg-payment-meta { display: flex; flex-direction: column; min-width: 0; }

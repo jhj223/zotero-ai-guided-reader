@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "types": "wrangler types",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
-    "dry-run": "wrangler deploy --dry-run"
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "dry-run": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
     "hono": "^4.13.1"

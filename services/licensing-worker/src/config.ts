@@ -58,20 +58,13 @@ export function loadRuntimeConfig(env: WorkerEnv): RuntimeConfig {
   ) {
     throw new Error("LICENSE_PRIVATE_KEY_PEM must be a PKCS8 PEM private key.");
   }
-  const rateLimitPepper = required(
-    env.RATE_LIMIT_PEPPER,
-    "RATE_LIMIT_PEPPER",
-  );
+  const rateLimitPepper = required(env.RATE_LIMIT_PEPPER, "RATE_LIMIT_PEPPER");
   if (new TextEncoder().encode(rateLimitPepper).length < 32) {
     throw new Error("RATE_LIMIT_PEPPER must contain at least 32 bytes.");
   }
   rejectPlaceholder(rateLimitPepper, "RATE_LIMIT_PEPPER");
   const apiToken = required(env.AFDIAN_API_TOKEN, "AFDIAN_API_TOKEN");
-  if (
-    apiToken.length < 16 ||
-    apiToken.length > 256 ||
-    /\s/.test(apiToken)
-  ) {
+  if (apiToken.length < 16 || apiToken.length > 256 || /\s/.test(apiToken)) {
     throw new Error("AFDIAN_API_TOKEN has an invalid format.");
   }
   rejectPlaceholder(apiToken, "AFDIAN_API_TOKEN");

@@ -9,14 +9,14 @@
     {
       "binding": "DB",
       "database_name": "zotero-ai-guided-reader-licensing",
-      "migrations_dir": "migrations"
-    }
+      "migrations_dir": "migrations",
+    },
   ],
   "triggers": {
-    "crons": ["*/10 * * * *"]
+    "crons": ["*/10 * * * *"],
   },
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 0.1
-  }
+    "head_sampling_rate": 0.1,
+  },
 }

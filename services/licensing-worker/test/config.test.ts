@@ -28,15 +28,13 @@ describe("loadRuntimeConfig", () => {
     expect(config.afdian.monthlyPlanId).toBe(
       "11111111111111111111111111111111",
     );
-    expect(config.afdian.yearlyPlanId).toBe(
-      "22222222222222222222222222222222",
-    );
+    expect(config.afdian.yearlyPlanId).toBe("22222222222222222222222222222222");
   });
 
   it("rejects missing, malformed, and placeholder deployment values", () => {
-    expect(() =>
-      loadRuntimeConfig(validEnv({ AFDIAN_API_TOKEN: "" })),
-    ).toThrow(/AFDIAN_API_TOKEN/);
+    expect(() => loadRuntimeConfig(validEnv({ AFDIAN_API_TOKEN: "" }))).toThrow(
+      /AFDIAN_API_TOKEN/,
+    );
     expect(() =>
       loadRuntimeConfig(validEnv({ AFDIAN_MONTHLY_PLAN_ID: "bad id" })),
     ).toThrow(/AFDIAN_MONTHLY_PLAN_ID/);

@@ -80,7 +80,12 @@ export function useLicenseController(): LicenseController {
           .catch((reason) => {
             if (controller.signal.aborted) return;
             setError(describeError(reason));
-            if (Date.now() - startedAt < MAX_POLLING_MS) schedule();
+            if (
+              Date.now() - startedAt < MAX_POLLING_MS &&
+              Date.now() < Date.parse(order.expiresAt)
+            ) {
+              schedule();
+            }
           });
       }, POLL_INTERVAL_MS);
     };

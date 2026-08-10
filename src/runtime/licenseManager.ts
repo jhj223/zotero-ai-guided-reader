@@ -135,8 +135,6 @@ export class LicenseManager {
     }
     const snapshot = await this.acceptIssued(
       {
-        status: "pro",
-        validUntil: result.expiresAt,
         entitlementToken: result.entitlementToken,
       },
       this.snapshot.plans,
@@ -230,7 +228,7 @@ export class LicenseManager {
   }
 
   private async acceptIssued(
-    issued: IssuedEntitlement,
+    issued: Pick<IssuedEntitlement, "entitlementToken">,
     plans: LicensePlan[],
   ): Promise<LicenseSnapshot> {
     if (!this.dependencies.config.enabled) {

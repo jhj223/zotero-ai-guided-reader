@@ -34,6 +34,9 @@ test("sidebar exposes trial, both checkout modes, and automatic polling UI", asy
   assert.match(hook, /Zotero\.launchURL/);
   assert.match(hook, /validateAfdianCheckoutUrl/);
   assert.match(app, /\.zg-plan-grid \{[^}]*minmax\(118px, 1fr\)/);
-  assert.match(app, /\.zg-payment \{[^}]*auto-fit[^}]*minmax\(136px, 1fr\)/);
+  assert.match(
+    app,
+    /\.zg-payment \{[^}]*auto-fit[^}]*minmax\(min\(136px, 100%\), 1fr\)/,
+  );
   assert.match(app, /\.zg-payment-link \{[^}]*minmax\(0, 1fr\)/);
 });

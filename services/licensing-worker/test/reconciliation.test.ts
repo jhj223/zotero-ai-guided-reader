@@ -56,7 +56,11 @@ describe("missed-webhook reconciliation", () => {
       create_time: Math.floor(NOW / 1000) + 60,
     };
     const fetcher = vi.fn(async () =>
-      Response.json({ ec: 200, em: "", data: { list: [providerOrder] } }),
+      Response.json({
+        ec: 200,
+        em: "",
+        data: { list: [providerOrder], total_count: 1, total_page: 1 },
+      }),
     );
 
     expect(
@@ -69,7 +73,11 @@ describe("missed-webhook reconciliation", () => {
   });
 
   it("fails closed when the provider cannot be queried", async () => {
-    const service = new LicensingService(new LicensingStore(env.DB), () => NOW);
+    const createdAt = NOW - 4 * 86_400_000;
+    const service = new LicensingService(
+      new LicensingStore(env.DB),
+      () => createdAt,
+    );
     const local = await service.createOrder(
       "device_reconcile_fail_001",
       "pro_yearly",
@@ -82,6 +90,47 @@ describe("missed-webhook reconciliation", () => {
         },
       }),
     ).rejects.toThrow(/query/i);
-    expect((await service.store.findOrder(local.orderId))?.status).toBe("pending");
+    expect((await service.store.findOrder(local.orderId))?.status).toBe(
+      "expired",
+    );
+  });
+
+  it("keeps paging until it reaches the oldest local candidate", async () => {
+    const service = new LicensingService(new LicensingStore(env.DB), () => NOW);
+    const local = await service.createOrder(
+      "device_reconcile_page_004",
+      "pro_monthly",
+    );
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      const envelope = JSON.parse(String(init?.body)) as { params: string };
+      const { page, per_page } = JSON.parse(envelope.params) as {
+        page: number;
+        per_page: number;
+      };
+      expect(per_page).toBe(100);
+      const list = Array.from({ length: 1 }, (_, index) => ({
+        out_trade_no: `page${page}_${String(index).padStart(3, "0")}`,
+        custom_order_id:
+          page === 4 && index === 0
+            ? local.customOrderId
+            : `co_page_${page}_${String(index).padStart(20, "0")}`,
+        user_id: "33333333333333333333333333333333",
+        plan_id: workerEnv.AFDIAN_MONTHLY_PLAN_ID,
+        total_amount: "5.90",
+        status: 2,
+        product_type: 0,
+        create_time: Math.floor(NOW / 1000) + 60,
+      }));
+      return Response.json({
+        ec: 200,
+        em: "",
+        data: { list, total_count: 4, total_page: 4 },
+      });
+    });
+
+    expect(
+      await reconcilePendingOrders(workerEnv, { now: () => NOW, fetcher }),
+    ).toEqual({ checked: 1, completed: 1 });
+    expect(fetcher).toHaveBeenCalledTimes(4);
   });
 });

@@ -59,6 +59,8 @@ describe("Worker entitlement signing", () => {
 
 function decodeBase64Url(value: string): Uint8Array<ArrayBuffer> {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-  const binary = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="));
+  const binary = atob(
+    normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="),
+  );
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }

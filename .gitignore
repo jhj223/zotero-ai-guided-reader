@@ -4,8 +4,9 @@
 # Node.js
 node_modules
 .worktrees/
-services/licensing-worker/.dev.vars
+services/licensing-worker/.dev.vars*
 services/licensing-worker/.wrangler/
+config/commercial-release.json
 pnpm-lock.yaml
 yarn.lock
 

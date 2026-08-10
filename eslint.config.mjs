@@ -5,6 +5,10 @@ import zotero from "@zotero-plugin/eslint-config";
 export default zotero({
   overrides: [
     {
+      name: "project/generated-worker-types",
+      ignores: ["services/licensing-worker/worker-configuration.d.ts"],
+    },
+    {
       files: ["**/*.ts"],
       rules: {
         // We disable this rule here because the template

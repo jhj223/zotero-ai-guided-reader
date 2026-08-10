@@ -21,7 +21,7 @@ CREATE TABLE orders (
   plan_id TEXT NOT NULL CHECK (plan_id IN ('pro_monthly', 'pro_yearly')),
   duration_days INTEGER NOT NULL CHECK (duration_days IN (30, 365)),
   amount_fen INTEGER NOT NULL CHECK (amount_fen > 0),
-  status TEXT NOT NULL CHECK (status IN ('pending', 'paid', 'expired', 'closed')),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'paid', 'expired')),
   poll_token_hash TEXT NOT NULL CHECK (length(poll_token_hash) = 64),
   provider_transaction_id TEXT UNIQUE,
   created_at INTEGER NOT NULL,
@@ -47,6 +47,7 @@ CREATE TABLE rate_limits (
 ) STRICT;
 
 CREATE INDEX orders_device_id_idx ON orders(device_id, created_at DESC);
-CREATE INDEX orders_pending_idx ON orders(status, created_at);
+CREATE INDEX orders_pending_idx ON orders(status, expires_at);
+CREATE INDEX orders_reconcile_idx ON orders(status, created_at);
 CREATE INDEX payment_events_received_idx ON payment_events(received_at);
 CREATE INDEX rate_limits_expiry_idx ON rate_limits(expires_at);

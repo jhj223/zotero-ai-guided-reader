@@ -6,19 +6,13 @@ const CHECKOUT_ORIGIN = "https://ifdian.net";
 const QUERY_ORDER_URL = "https://ifdian.net/api/open/query-order";
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const DEFAULT_TIMEOUT_MS = 8_000;
+// Afdian's current developer documentation supports per_page values from 1-100
+// and returns total_page for traversal:
+// https://afdian.com/p/9c65d9cc617011ed81c352540025c377
+const AFDIAN_PAGE_SIZE = 100;
 const AFDIAN_ID = /^[0-9a-f]{32}$/;
 const OUT_TRADE_NO = /^[A-Za-z0-9_-]{8,64}$/;
 const CUSTOM_ORDER_ID = /^co_[A-Za-z0-9_-]{20,128}$/;
-
-export const AFDIAN_WEBHOOK_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwwdaCg1Bt+UKZKs0R54y
-lYnuANma49IpgoOwNmk3a0rhg/PQuhUJ0EOZSowIC44l0K3+fqGns3Ygi4AfmEfS
-4EKbdk1ahSxu7Zkp2rHMt+R9GarQFQkwSS/5x1dYiHNVMiR8oIXDgjmvxuNes2Cr
-8fw9dEF0xNBKdkKgG2qAawcN1nZrdyaKWtPVT9m2Hl0ddOO9thZmVLFOb9NVzgYf
-jEgI+KWX6aY19Ka/ghv/L4t1IXmz9pctablN5S0CRWpJW3Cn0k6zSXgjVdKm4uN7
-jRlgSRaf/Ind46vMCm3N2sgwxu/g3bnooW+db0iLo13zzuvyn727Q3UDQ0MmZcEW
-MQIDAQAB
------END PUBLIC KEY-----`;
 
 export interface AfdianConfig {
   userId: string;
@@ -40,8 +34,13 @@ export interface AfdianOrder {
 }
 
 export interface ParsedAfdianWebhook {
-  signature: string;
-  order: AfdianOrder;
+  outTradeNo: string;
+  customOrderId: string;
+}
+
+export interface AfdianOrderPage {
+  orders: AfdianOrder[];
+  totalPage: number;
 }
 
 export interface VerifiedAfdianPayment {
@@ -58,10 +57,7 @@ export interface AfdianApiEnvelope {
   sign: string;
 }
 
-type AfdianFetch = (
-  input: string,
-  init?: RequestInit,
-) => Promise<Response>;
+type AfdianFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
 export function buildAfdianCheckoutUrl(
   planId: string,
@@ -103,43 +99,21 @@ export function createAfdianApiEnvelope(
 export function parseAfdianWebhook(value: unknown): ParsedAfdianWebhook {
   const root = requiredObject(value, "webhook");
   if (root.ec !== 200) throw new Error("Afdian webhook status is invalid.");
-  const signature = requiredString(root.sign, "webhook signature", 1024);
-  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(signature)) {
-    throw new Error("Afdian webhook signature is invalid.");
-  }
   const data = requiredObject(root.data, "webhook data");
   if (data.type !== "order") throw new Error("Afdian webhook type is invalid.");
+  const order = requiredObject(data.order, "webhook order");
   return {
-    signature,
-    order: parseOrder(requiredObject(data.order, "webhook order"), false),
+    outTradeNo: patternedString(
+      order.out_trade_no,
+      "transaction ID",
+      OUT_TRADE_NO,
+    ),
+    customOrderId: patternedString(
+      order.custom_order_id,
+      "custom order ID",
+      CUSTOM_ORDER_ID,
+    ),
   };
-}
-
-export async function verifyAfdianWebhookSignature(
-  order: AfdianOrder,
-  signature: string,
-  publicKeyPem = AFDIAN_WEBHOOK_PUBLIC_KEY_PEM,
-): Promise<boolean> {
-  let signatureBytes: Uint8Array<ArrayBuffer>;
-  try {
-    signatureBytes = base64ToBytes(signature);
-  } catch {
-    return false;
-  }
-  const key = await crypto.subtle.importKey(
-    "spki",
-    derFromPem(publicKeyPem, "PUBLIC KEY"),
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["verify"],
-  );
-  const signed = `${order.outTradeNo}${order.userId}${order.planId}${order.totalAmount}`;
-  return crypto.subtle.verify(
-    "RSASSA-PKCS1-v1_5",
-    key,
-    signatureBytes,
-    new TextEncoder().encode(signed),
-  );
 }
 
 export async function queryAfdianOrder(
@@ -151,13 +125,15 @@ export async function queryAfdianOrder(
     timeoutMs?: number;
   } = {},
 ): Promise<AfdianOrder | undefined> {
-  const orders = await requestAfdianOrders(
+  const result = await requestAfdianOrders(
     JSON.stringify({ out_trade_no: outTradeNo }),
     config,
     options,
   );
+  const orders = result.orders;
   const matches = orders.filter((order) => order.outTradeNo === outTradeNo);
-  if (matches.length > 1) throw new Error("Afdian query returned duplicate orders.");
+  if (matches.length > 1)
+    throw new Error("Afdian query returned duplicate orders.");
   return matches[0];
 }
 
@@ -165,25 +141,18 @@ export async function queryRecentAfdianOrders(
   config: AfdianConfig,
   options: {
     page: number;
-    perPage: number;
     fetcher?: AfdianFetch;
     now?: () => number;
     timeoutMs?: number;
   },
-): Promise<AfdianOrder[]> {
-  if (
-    !Number.isSafeInteger(options.page) ||
-    options.page < 1 ||
-    !Number.isSafeInteger(options.perPage) ||
-    options.perPage < 1 ||
-    options.perPage > 100
-  ) {
+): Promise<AfdianOrderPage> {
+  if (!Number.isSafeInteger(options.page) || options.page < 1) {
     throw new Error("Afdian page query is invalid.");
   }
   return requestAfdianOrders(
-    JSON.stringify({ page: options.page, per_page: options.perPage }),
+    JSON.stringify({ page: options.page, per_page: AFDIAN_PAGE_SIZE }),
     config,
-    options,
+    { ...options, maximumOrders: AFDIAN_PAGE_SIZE, requirePagination: true },
   );
 }
 
@@ -194,8 +163,10 @@ async function requestAfdianOrders(
     fetcher?: AfdianFetch;
     now?: () => number;
     timeoutMs?: number;
+    maximumOrders?: number;
+    requirePagination?: boolean;
   },
-): Promise<AfdianOrder[]> {
+): Promise<AfdianOrderPage> {
   const fetcher = options.fetcher ?? ((url, init) => fetch(url, init));
   const now = options.now ?? Date.now;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -222,7 +193,7 @@ async function requestAfdianOrders(
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("Afdian query timeout.");
+      throw new Error("Afdian query timeout.", { cause: error });
     }
     throw new Error("Afdian query failed.", { cause: error });
   }
@@ -249,21 +220,34 @@ async function requestAfdianOrders(
   const root = requiredObject(parsed, "query response");
   if (root.ec !== 200) throw new Error("Afdian provider rejected the query.");
   const data = requiredObject(root.data, "query data");
-  if (!Array.isArray(data.list) || data.list.length > 100) {
+  const maximumOrders = options.maximumOrders ?? 100;
+  if (!Array.isArray(data.list) || data.list.length > maximumOrders) {
     throw new Error("Afdian query order list is invalid.");
   }
-  return data.list.map((item) =>
-    parseOrder(requiredObject(item, "query order"), true),
-  );
+  let totalPage = 1;
+  if (options.requirePagination) {
+    totalPage = requiredInteger(data.total_page, "query total pages");
+    if (totalPage < 0 || totalPage > 1_000_000) {
+      throw new Error("Afdian query pagination is invalid.");
+    }
+  }
+  return {
+    orders: data.list.map((item) =>
+      parseOrder(requiredObject(item, "query order")),
+    ),
+    totalPage,
+  };
 }
 
 export function assertAfdianOrderMatches(
   localOrder: StoredOrder,
   queried: AfdianOrder,
-  webhook: AfdianOrder | undefined,
   config: AfdianConfig,
 ): VerifiedAfdianPayment {
   assertConfig(config);
+  // The signed API request uses the creator user_id and token, so this query
+  // can only return orders belonging to the configured creator. order.user_id
+  // identifies the payer and is not a local order-authorization predicate.
   const expectedPlanId =
     localOrder.planId === "pro_monthly"
       ? config.monthlyPlanId
@@ -283,18 +267,6 @@ export function assertAfdianOrderMatches(
   if (paidAt < localOrder.createdAt || paidAt > localOrder.expiresAt) {
     throw new Error("Afdian payment falls outside the local order window.");
   }
-  if (
-    webhook &&
-    (webhook.outTradeNo !== queried.outTradeNo ||
-      webhook.customOrderId !== queried.customOrderId ||
-      webhook.userId !== queried.userId ||
-      webhook.planId !== queried.planId ||
-      webhook.amountFen !== queried.amountFen ||
-      webhook.status !== queried.status ||
-      webhook.productType !== queried.productType)
-  ) {
-    throw new Error("Afdian webhook does not match the queried order.");
-  }
   return {
     eventId: queried.outTradeNo,
     providerTransactionId: queried.outTradeNo,
@@ -307,14 +279,18 @@ export function afdianConfig(config: RuntimeConfig): AfdianConfig {
   return config.afdian;
 }
 
-function parseOrder(value: Record<string, unknown>, requireCreateTime: boolean): AfdianOrder {
+function parseOrder(value: Record<string, unknown>): AfdianOrder {
   const totalAmount = requiredString(value.total_amount, "order amount", 32);
-  const createTime = value.create_time == null ? 0 : requiredInteger(value.create_time, "order time");
-  if (requireCreateTime && createTime <= 0) {
+  const createTime = requiredInteger(value.create_time, "order time");
+  if (createTime <= 0) {
     throw new Error("Afdian order time is invalid.");
   }
   return {
-    outTradeNo: patternedString(value.out_trade_no, "transaction ID", OUT_TRADE_NO),
+    outTradeNo: patternedString(
+      value.out_trade_no,
+      "transaction ID",
+      OUT_TRADE_NO,
+    ),
     customOrderId: patternedString(
       value.custom_order_id,
       "custom order ID",
@@ -331,10 +307,12 @@ function parseOrder(value: Record<string, unknown>, requireCreateTime: boolean):
 }
 
 function moneyToFen(value: string): number {
-  const match = value.match(/^(0|[1-9]\d{0,7})\.(\d{2})$/);
+  const match = value.match(/^(0|[1-9]\d{0,7})(?:\.(\d{1,2}))?$/);
   if (!match) throw new Error("Afdian order amount is invalid.");
-  const amount = Number(match[1]) * 100 + Number(match[2]);
-  if (!Number.isSafeInteger(amount)) throw new Error("Afdian order amount is invalid.");
+  const amount =
+    Number(match[1]) * 100 + Number((match[2] ?? "").padEnd(2, "0"));
+  if (!Number.isSafeInteger(amount))
+    throw new Error("Afdian order amount is invalid.");
   return amount;
 }
 
@@ -375,19 +353,7 @@ function patternedString(
 }
 
 function requiredInteger(value: unknown, name: string): number {
-  if (!Number.isSafeInteger(value)) throw new Error(`Afdian ${name} is invalid.`);
+  if (!Number.isSafeInteger(value))
+    throw new Error(`Afdian ${name} is invalid.`);
   return Number(value);
-}
-
-function derFromPem(pem: string, label: "PUBLIC KEY"): ArrayBuffer {
-  const match = pem.trim().match(
-    new RegExp(`^-----BEGIN ${label}-----([A-Za-z0-9+/=\\s]+)-----END ${label}-----$`),
-  );
-  if (!match) throw new Error("Afdian public key is invalid.");
-  return base64ToBytes(match[1].replace(/\s/g, "")).buffer;
-}
-
-function base64ToBytes(value: string): Uint8Array<ArrayBuffer> {
-  const binary = atob(value);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }

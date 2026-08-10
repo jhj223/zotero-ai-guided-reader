@@ -17,31 +17,29 @@
 
 ## 支付通道（阻断）
 
-- [ ] 明确只选择一种已验收通道：银联商务一次性二维码、微信 Native API，或经营收款码 Windows 到账桥接。
-- [ ] 银联商务通道已取得并隔离保存 `AppId`、`AppKey`、15 位商户号、8 位终端号、
-      4 位来源编号和独立通知通信密钥；生产回调使用公网 HTTPS。
-- [ ] 银联商务通道验证创建一次性账单、原始表单验签、重复通知幂等、五秒查单节流和漏回调恢复；
-      个人云闪付码或静态经营码不得代替开放平台商户参数。
-- [ ] Native 通道已配置商户号、AppID、证书序列号、商户私钥、APIv3 密钥和平台公钥，
-      并使用保留原始正文与签名头的公网 HTTPS 回调。
-- [ ] 经营码通道的二维码在 Git 之外，watcher 使用独立 Ed25519 密钥、DPAPI、
-      SQLite outbox 和只读 UI Automation；第三方闭源监听 EXE 不得进入发布链路。
-- [ ] 经营码通道已在目标 Windows/微信版本上确认官方到账会话、唯一金额解析、健康心跳、
-      断网补传、UI 改版失败关闭和 watcher 随系统启动。
-- [ ] 生产配置确认 `PAYMENT_PROVIDER` 与验收通道一致；沙盒在生产会启动失败。
-- [ ] 真实小额验证：下单、扫码、到账、自动开通、重复事件；月付和年付各完成一次。
-- [ ] 验证金额不符、商户号不符、过期回调、错误证书、伪造签名均不能开通。
-- [ ] 经营码通道额外验证 nonce、event ID、sequence、消息指纹重放和多候选订单均不开通。
+- [ ] 爱发电创作者账号可正常收款；5.90 元月付和 49 元年付方案均已发布且方案 ID 与
+      Cloudflare Secret 一致。
+- [ ] 爱发电 API Token 已在截图泄露后重新生成；旧 Token 已失效，新 Token 只存在于
+      Cloudflare Secret 和受限备份，不进入 Git、日志、聊天或 XPI。
+- [ ] Webhook 固定为生产 Worker 的 `/v1/webhooks/afdian`，测试通知返回
+      `{"ec":200,"em":""}`，但测试数据不会创建授权。
+- [ ] 验证 Webhook 只触发查单，每次开通都必须通过带创作者凭据签名的爱发电查单 API；
+      回调内容单独到达不能开通。
+- [ ] 真实验证：月付 5.90 元下单、付款、自动开通 30 天并在 Zotero 中刷新成功。
+- [ ] 年付 49 元在正式开放前完成一次经明确授权的真实付款和 365 天开通验证。
+- [ ] 验证金额不符、套餐不符、过期付款、伪造通知和查询失败均不能开通。
+- [ ] 验证重复 Webhook、重复轮询、cron 补查和并发通知不会重复延长权益。
+- [ ] 暂停 Webhook 后付款，确认 10 分钟 cron 能通过查单恢复开通。
 - [ ] 完成真实退款、重复付款、错付和客服查单演练。
 
 ## 密钥与服务（阻断）
 
-- [ ] 生产 RSA 私钥只存在于受限服务器/密钥管理系统，插件和 Git 中均不存在。
+- [ ] 生产 RSA 私钥只存在于 Cloudflare Secret 和受限备份，插件和 Git 中均不存在。
 - [ ] 公钥环、`kid`、issuer、audience 和 HTTPS 服务 URL 固化进正式 XPI。
 - [ ] 私钥有加密离线备份，完成恢复演练并限制文件权限。
 - [ ] 制定轮换流程：新旧公钥短期并存、发布新版、停止旧私钥签发、到期移除旧公钥。
-- [ ] 数据库定期备份；备份恢复后订单唯一约束和授权有效期正确。
-- [ ] 反向代理设置 TLS、请求体上限、超时、日志脱敏和服务健康检查。
+- [ ] D1 Time Travel/备份与恢复已演练；恢复后订单唯一约束和授权有效期正确。
+- [ ] Worker 请求体上限、出站超时、日志脱敏、速率限制、`/healthz` 和 cron 告警已检查。
 
 ## GitHub 与 Zotero 市场（阻断）
 
@@ -57,12 +55,17 @@
 ```powershell
 npm ci
 npm ci --prefix services/licensing
+npm ci --prefix services/licensing-worker
 npm run licenses:audit
 npm audit --omit=dev --audit-level=high
 npm audit --prefix services/licensing --omit=dev --audit-level=high
+npm audit --prefix services/licensing-worker --audit-level=high
 npm test
 npm run license:test
 npm run license:build
+npm run license:worker:test
+npm run license:worker:typecheck
+npm run license:worker:dry-run
 npm run lint:check
 npm run build
 npm run release:sbom

@@ -1,5 +1,5 @@
 export type PaidPlanId = "pro_monthly" | "pro_yearly";
-export type OrderStatus = "pending" | "paid" | "expired" | "closed";
+export type OrderStatus = "pending" | "paid" | "expired";
 
 export interface EntitlementRecord {
   deviceId: string;
@@ -160,10 +160,7 @@ export class LicensingStore {
       throw new Error("ORDER_PAYMENT_EXPIRED");
     }
 
-    const current = await this.getEntitlement(order.deviceId);
-    const validUntil =
-      Math.max(current?.validUntil ?? 0, input.paidAt) +
-      order.durationDays * 86_400_000;
+    const durationMs = order.durationDays * 86_400_000;
 
     try {
       const results = await this.database.batch([
@@ -188,10 +185,17 @@ export class LicensingStore {
              ON CONFLICT(device_id) DO UPDATE SET
                kind = 'pro',
                plan_id = excluded.plan_id,
-               valid_until = excluded.valid_until,
+               valid_until = MAX(entitlements.valid_until, ?5) + ?6,
                updated_at = excluded.updated_at`,
           )
-          .bind(order.deviceId, order.planId, validUntil, input.paidAt),
+          .bind(
+            order.deviceId,
+            order.planId,
+            input.paidAt + durationMs,
+            input.verifiedAt,
+            input.paidAt,
+            durationMs,
+          ),
         this.database
           .prepare(
             `UPDATE orders
@@ -217,21 +221,6 @@ export class LicensingStore {
       throw new Error("PAYMENT_STATE_UNAVAILABLE");
     }
     return { isReplay: false, order: completedOrder, entitlement };
-  }
-
-  async listPendingOrders(
-    createdAfter: number,
-    limit: number,
-  ): Promise<StoredOrder[]> {
-    const result = await this.database
-      .prepare(
-        `SELECT * FROM orders
-         WHERE status = 'pending' AND created_at >= ?1
-         ORDER BY created_at ASC LIMIT ?2`,
-      )
-      .bind(createdAfter, limit)
-      .all<Row>();
-    return result.results.map(mapOrder);
   }
 
   async listReconcilableOrders(
@@ -280,10 +269,16 @@ export class LicensingStore {
     return Number(row?.count) <= input.limit;
   }
 
-  async deleteExpiredRateLimits(now: number): Promise<number> {
+  async deleteExpiredRateLimits(now: number, limit = 5_000): Promise<number> {
     const result = await this.database
-      .prepare("DELETE FROM rate_limits WHERE expires_at <= ?1")
-      .bind(now)
+      .prepare(
+        `DELETE FROM rate_limits WHERE key_hash IN (
+           SELECT key_hash FROM rate_limits
+           WHERE expires_at <= ?1
+           ORDER BY expires_at ASC LIMIT ?2
+         )`,
+      )
+      .bind(now, limit)
       .run();
     return Number(result.meta.changes);
   }
@@ -296,6 +291,54 @@ export class LicensingStore {
       .bind(now)
       .run();
     return Number(result.meta.changes);
+  }
+
+  async expireOrder(orderId: string, now: number): Promise<number> {
+    const result = await this.database
+      .prepare(
+        `UPDATE orders SET status = 'expired'
+         WHERE id = ?1 AND status = 'pending' AND expires_at < ?2`,
+      )
+      .bind(orderId, now)
+      .run();
+    return Number(result.meta.changes);
+  }
+
+  async pruneExpiredOrderArtifacts(
+    createdBefore: number,
+    limit: number,
+  ): Promise<{ orders: number; devices: number }> {
+    const deletedOrders = await this.database
+      .prepare(
+        `DELETE FROM orders WHERE id IN (
+           SELECT id FROM orders
+           WHERE status = 'expired' AND created_at < ?1
+           ORDER BY created_at ASC LIMIT ?2
+         )`,
+      )
+      .bind(createdBefore, limit)
+      .run();
+    const deletedDevices = await this.database
+      .prepare(
+        `DELETE FROM devices WHERE id IN (
+           SELECT devices.id FROM devices
+           WHERE devices.trial_started_at IS NULL
+             AND NOT EXISTS (
+               SELECT 1 FROM orders WHERE orders.device_id = devices.id
+             )
+             AND NOT EXISTS (
+               SELECT 1 FROM entitlements
+               WHERE entitlements.device_id = devices.id
+             )
+           ORDER BY devices.created_at ASC LIMIT ?1
+         )`,
+      )
+      .bind(limit)
+      .run();
+    return {
+      orders: Number(deletedOrders.meta.changes),
+      devices: Number(deletedDevices.meta.changes),
+    };
   }
 
   private async replayedPayment(
