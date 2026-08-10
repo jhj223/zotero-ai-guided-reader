@@ -1,12 +1,21 @@
-import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
+import path from "node:path";
+import {
+  cloudflareTest,
+  readD1Migrations,
+} from "@cloudflare/vitest-pool-workers";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [
-    cloudflareTest({
-      wrangler: { configPath: "./wrangler.jsonc" },
-      miniflare: {
-        bindings: {
+    cloudflareTest(async () => {
+      const migrations = await readD1Migrations(
+        path.join(import.meta.dirname, "migrations"),
+      );
+      return {
+        wrangler: { configPath: "./wrangler.jsonc" },
+        miniflare: {
+          bindings: {
+            TEST_MIGRATIONS: migrations,
           LICENSE_ISSUER: "https://license.example.test",
           LICENSE_AUDIENCE: "zotero-ai-guided-reader",
           LICENSE_KEY_ID: "license-key-2026-08",
@@ -18,11 +27,13 @@ export default defineConfig({
           AFDIAN_API_TOKEN: "test-only-afdian-token-32-bytes-long",
           AFDIAN_MONTHLY_PLAN_ID: "11111111111111111111111111111111",
           AFDIAN_YEARLY_PLAN_ID: "22222222222222222222222222222222",
+          },
         },
-      },
+      };
     }),
   ],
   test: {
     include: ["test/**/*.test.ts"],
+    setupFiles: ["./test/apply-migrations.ts"],
   },
 });

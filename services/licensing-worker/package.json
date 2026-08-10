@@ -8,6 +8,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "types": "wrangler types",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "dry-run": "wrangler deploy --dry-run"
   },
   "dependencies": {

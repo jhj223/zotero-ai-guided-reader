@@ -52,11 +52,11 @@ export function loadRuntimeConfig(env: WorkerEnv): RuntimeConfig {
     "LICENSE_PRIVATE_KEY_PEM",
   );
   if (
-    !/^-----BEGIN (?:RSA )?PRIVATE KEY-----[\s\S]+-----END (?:RSA )?PRIVATE KEY-----$/.test(
+    !/^-----BEGIN PRIVATE KEY-----[\s\S]+-----END PRIVATE KEY-----$/.test(
       privateKeyPem,
     )
   ) {
-    throw new Error("LICENSE_PRIVATE_KEY_PEM must be a PEM private key.");
+    throw new Error("LICENSE_PRIVATE_KEY_PEM must be a PKCS8 PEM private key.");
   }
   const rateLimitPepper = required(
     env.RATE_LIMIT_PEPPER,
