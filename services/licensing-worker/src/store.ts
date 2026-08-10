@@ -153,7 +153,9 @@ export class LicensingStore {
     if (order.status === "paid") {
       return this.replayedPayment(order, input);
     }
-    if (order.status !== "pending") throw new Error("ORDER_NOT_PENDING");
+    if (order.status !== "pending" && order.status !== "expired") {
+      throw new Error("ORDER_NOT_PENDING");
+    }
     if (input.paidAt < order.createdAt || input.paidAt > order.expiresAt) {
       throw new Error("ORDER_PAYMENT_EXPIRED");
     }
@@ -194,7 +196,7 @@ export class LicensingStore {
           .prepare(
             `UPDATE orders
              SET status = 'paid', provider_transaction_id = ?1, paid_at = ?2
-             WHERE id = ?3 AND status = 'pending'`,
+             WHERE id = ?3 AND status IN ('pending', 'expired')`,
           )
           .bind(input.providerTransactionId, input.paidAt, order.id),
       ]);
@@ -230,6 +232,60 @@ export class LicensingStore {
       .bind(createdAfter, limit)
       .all<Row>();
     return result.results.map(mapOrder);
+  }
+
+  async listReconcilableOrders(
+    createdAfter: number,
+    limit: number,
+  ): Promise<StoredOrder[]> {
+    const result = await this.database
+      .prepare(
+        `SELECT * FROM orders
+         WHERE status IN ('pending', 'expired') AND created_at >= ?1
+         ORDER BY created_at ASC LIMIT ?2`,
+      )
+      .bind(createdAfter, limit)
+      .all<Row>();
+    return result.results.map(mapOrder);
+  }
+
+  async consumeRateLimit(input: {
+    keyHash: string;
+    now: number;
+    windowMs: number;
+    limit: number;
+  }): Promise<boolean> {
+    const row = await this.database
+      .prepare(
+        `INSERT INTO rate_limits
+           (key_hash, window_started_at, count, expires_at)
+         VALUES (?1, ?2, 1, ?3)
+         ON CONFLICT(key_hash) DO UPDATE SET
+           window_started_at = CASE
+             WHEN rate_limits.expires_at <= ?2 THEN ?2
+             ELSE rate_limits.window_started_at
+           END,
+           count = CASE
+             WHEN rate_limits.expires_at <= ?2 THEN 1
+             ELSE rate_limits.count + 1
+           END,
+           expires_at = CASE
+             WHEN rate_limits.expires_at <= ?2 THEN ?3
+             ELSE rate_limits.expires_at
+           END
+         RETURNING count`,
+      )
+      .bind(input.keyHash, input.now, input.now + input.windowMs)
+      .first<Row>();
+    return Number(row?.count) <= input.limit;
+  }
+
+  async deleteExpiredRateLimits(now: number): Promise<number> {
+    const result = await this.database
+      .prepare("DELETE FROM rate_limits WHERE expires_at <= ?1")
+      .bind(now)
+      .run();
+    return Number(result.meta.changes);
   }
 
   async expirePendingOrders(now: number): Promise<number> {

@@ -1,4 +1,5 @@
 import type { EntitlementRecord } from "./store";
+import { createPrivateKey, createPublicKey, createVerify } from "node:crypto";
 
 const DAY_MS = 86_400_000;
 
@@ -7,6 +8,12 @@ export interface EntitlementSigningConfig {
   audience: string;
   keyId: string;
   privateKeyPem: string;
+}
+
+export interface RefreshTokenClaims {
+  deviceId: string;
+  issuer: string;
+  audience: string;
 }
 
 export function randomOpaqueId(prefix: string): string {
@@ -73,6 +80,52 @@ export async function signEntitlement(
   return `${signed}.${encodeBase64Url(new Uint8Array(signature))}`;
 }
 
+export function verifyRefreshToken(
+  token: string,
+  expectedDeviceId: string,
+  config: EntitlementSigningConfig,
+): RefreshTokenClaims {
+  const parts = token.split(".");
+  if (parts.length !== 3) throw new Error("INVALID_ENTITLEMENT_TOKEN");
+  const [encodedHeader, encodedPayload, encodedSignature] = parts;
+  const header = decodeJson(encodedHeader);
+  const claims = decodeJson(encodedPayload);
+  if (
+    !header ||
+    typeof header !== "object" ||
+    Array.isArray(header) ||
+    (header as Record<string, unknown>).alg !== "RS256" ||
+    (header as Record<string, unknown>).typ !== "ZGAI-ENT" ||
+    (header as Record<string, unknown>).kid !== config.keyId ||
+    !claims ||
+    typeof claims !== "object" ||
+    Array.isArray(claims)
+  ) {
+    throw new Error("INVALID_ENTITLEMENT_TOKEN");
+  }
+  const values = claims as Record<string, unknown>;
+  if (
+    values.version !== 1 ||
+    values.deviceId !== expectedDeviceId ||
+    values.issuer !== config.issuer ||
+    values.audience !== config.audience
+  ) {
+    throw new Error("INVALID_ENTITLEMENT_TOKEN");
+  }
+  const verifier = createVerify("RSA-SHA256");
+  verifier.update(`${encodedHeader}.${encodedPayload}`, "utf8");
+  verifier.end();
+  const publicKey = createPublicKey(createPrivateKey(config.privateKeyPem));
+  if (!verifier.verify(publicKey, base64UrlToBytes(encodedSignature))) {
+    throw new Error("INVALID_ENTITLEMENT_TOKEN");
+  }
+  return {
+    deviceId: expectedDeviceId,
+    issuer: config.issuer,
+    audience: config.audience,
+  };
+}
+
 export function pemFromDer(
   der: ArrayBuffer,
   label: "PRIVATE KEY" | "PUBLIC KEY",
@@ -95,6 +148,14 @@ function encodeJson(value: unknown): string {
   return encodeBase64Url(new TextEncoder().encode(JSON.stringify(value)));
 }
 
+function decodeJson(value: string): unknown {
+  try {
+    return JSON.parse(new TextDecoder().decode(base64UrlToBytes(value))) as unknown;
+  } catch {
+    throw new Error("INVALID_ENTITLEMENT_TOKEN");
+  }
+}
+
 function encodeBase64Url(bytes: Uint8Array): string {
   return bytesToBase64(bytes)
     .replace(/=/g, "")
@@ -106,4 +167,13 @@ function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary);
+}
+
+function base64UrlToBytes(value: string): Uint8Array<ArrayBuffer> {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) {
+    throw new Error("INVALID_ENTITLEMENT_TOKEN");
+  }
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="));
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }

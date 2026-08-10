@@ -151,14 +151,63 @@ export async function queryAfdianOrder(
     timeoutMs?: number;
   } = {},
 ): Promise<AfdianOrder | undefined> {
+  const orders = await requestAfdianOrders(
+    JSON.stringify({ out_trade_no: outTradeNo }),
+    config,
+    options,
+  );
+  const matches = orders.filter((order) => order.outTradeNo === outTradeNo);
+  if (matches.length > 1) throw new Error("Afdian query returned duplicate orders.");
+  return matches[0];
+}
+
+export async function queryRecentAfdianOrders(
+  config: AfdianConfig,
+  options: {
+    page: number;
+    perPage: number;
+    fetcher?: AfdianFetch;
+    now?: () => number;
+    timeoutMs?: number;
+  },
+): Promise<AfdianOrder[]> {
+  if (
+    !Number.isSafeInteger(options.page) ||
+    options.page < 1 ||
+    !Number.isSafeInteger(options.perPage) ||
+    options.perPage < 1 ||
+    options.perPage > 100
+  ) {
+    throw new Error("Afdian page query is invalid.");
+  }
+  return requestAfdianOrders(
+    JSON.stringify({ page: options.page, per_page: options.perPage }),
+    config,
+    options,
+  );
+}
+
+async function requestAfdianOrders(
+  params: string,
+  config: AfdianConfig,
+  options: {
+    fetcher?: AfdianFetch;
+    now?: () => number;
+    timeoutMs?: number;
+  },
+): Promise<AfdianOrder[]> {
   const fetcher = options.fetcher ?? ((url, init) => fetch(url, init));
   const now = options.now ?? Date.now;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const envelope = createAfdianApiEnvelope(
-    outTradeNo,
-    config,
-    Math.floor(now() / 1000),
-  );
+  assertConfig(config);
+  const timestampSeconds = Math.floor(now() / 1000);
+  const canonical = `${config.apiToken}params${params}ts${timestampSeconds}user_id${config.userId}`;
+  const envelope: AfdianApiEnvelope = {
+    user_id: config.userId,
+    params,
+    ts: timestampSeconds,
+    sign: createHash("md5").update(canonical, "utf8").digest("hex"),
+  };
   let response: Response;
   try {
     response = await fetcher(QUERY_ORDER_URL, {
@@ -203,11 +252,9 @@ export async function queryAfdianOrder(
   if (!Array.isArray(data.list) || data.list.length > 100) {
     throw new Error("Afdian query order list is invalid.");
   }
-  const matches = data.list
-    .map((item) => parseOrder(requiredObject(item, "query order"), true))
-    .filter((order) => order.outTradeNo === outTradeNo);
-  if (matches.length > 1) throw new Error("Afdian query returned duplicate orders.");
-  return matches[0];
+  return data.list.map((item) =>
+    parseOrder(requiredObject(item, "query order"), true),
+  );
 }
 
 export function assertAfdianOrderMatches(
