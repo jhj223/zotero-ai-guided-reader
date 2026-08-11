@@ -10,6 +10,8 @@ if (!basicTool.getGlobal("Zotero")[config.addonInstance]) {
   // `window` global during render, so expose them like the plugin template.
   defineGlobal("window");
   defineGlobal("document");
+  defineGlobal("AbortController");
+  defineGlobal("AbortSignal");
   // JSZip's async workers call the bare `setImmediate` global (a Node/IE
   // API); without it, unpacking the MinerU result ZIP throws.
   if (typeof _globalThis.setImmediate !== "function") {

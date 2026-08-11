@@ -36,7 +36,7 @@ test("runtime timers avoid bare setTimeout in the sandbox", async () => {
   assert.doesNotMatch(source, /setTimeout\(/);
 });
 
-test("plugin scope defines the browser globals react-dom needs", async () => {
+test("plugin scope defines the browser globals the reader UI needs", async () => {
   const source = await readFile(
     new URL("../src/index.ts", import.meta.url),
     "utf8",
@@ -48,4 +48,8 @@ test("plugin scope defines the browser globals react-dom needs", async () => {
   // section body empty.
   assert.match(source, /defineGlobal\("window"\)/);
   assert.match(source, /defineGlobal\("document"\)/);
+  // The licensing UI uses abortable requests. Zotero's bootstrap sandbox does
+  // not expose these constructors even though the main window does.
+  assert.match(source, /defineGlobal\("AbortController"\)/);
+  assert.match(source, /defineGlobal\("AbortSignal"\)/);
 });
