@@ -95,9 +95,42 @@ describe("licensing Worker API", () => {
       entitlementToken: issued.body.entitlementToken,
     });
 
-    expect(refreshed.response.status).toBe(401);
+    expect(refreshed.response.status).toBe(403);
     expect(refreshed.body).toMatchObject({
-      error: { code: "INVALID_ENTITLEMENT" },
+      error: { code: "ENTITLEMENT_EXPIRED" },
+    });
+  });
+
+  it("recovers an active paid entitlement from an expired local token", async () => {
+    let currentTime = NOW;
+    const app = createWorkerApp({ now: () => currentTime });
+    const issued = await jsonRequest(app, "/v1/trials", {
+      deviceId: "device_paid_recovery_001",
+      clientVersion: "0.1.0",
+    });
+    currentTime += 8 * 86_400_000;
+    await workerEnv.DB.prepare(
+      `UPDATE entitlements
+       SET kind = 'pro', plan_id = 'pro_monthly', valid_until = ?1, updated_at = ?2
+       WHERE device_id = ?3`,
+    )
+      .bind(
+        currentTime + 30 * 86_400_000,
+        currentTime,
+        "device_paid_recovery_001",
+      )
+      .run();
+
+    const refreshed = await jsonRequest(app, "/v1/entitlements/refresh", {
+      deviceId: "device_paid_recovery_001",
+      clientVersion: "0.1.0",
+      entitlementToken: issued.body.entitlementToken,
+    });
+
+    expect(refreshed.response.status).toBe(200);
+    expect(refreshed.body).toMatchObject({
+      status: "pro",
+      validUntil: new Date(currentTime + 30 * 86_400_000).toISOString(),
     });
   });
 
@@ -243,6 +276,44 @@ describe("licensing Worker API", () => {
       .bind(keyHash)
       .first<{ count: number }>();
     expect(row?.count).toBe(1);
+  });
+
+  it("limits trial farming to three installations per source per day", async () => {
+    const app = createWorkerApp({ now: () => NOW });
+    for (let index = 0; index < 3; index += 1) {
+      const response = await app.request(
+        "/v1/trials",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "cf-connecting-ip": "203.0.113.88",
+          },
+          body: JSON.stringify({
+            deviceId: `device_trial_farm_00${index}`,
+            clientVersion: "0.1.2",
+          }),
+        },
+        workerEnv,
+      );
+      expect(response.status).toBe(201);
+    }
+    const limited = await app.request(
+      "/v1/trials",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.88",
+        },
+        body: JSON.stringify({
+          deviceId: "device_trial_farm_004",
+          clientVersion: "0.1.2",
+        }),
+      },
+      workerEnv,
+    );
+    expect(limited.status).toBe(429);
   });
 });
 

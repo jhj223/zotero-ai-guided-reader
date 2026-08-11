@@ -28,6 +28,7 @@ declare namespace _ZoteroTypes {
       "temporaryHighlight": boolean;
       "licenseDeviceId": string;
       "licenseEntitlementToken": string;
+      "licensePendingOrder": string;
     };
   }
 }

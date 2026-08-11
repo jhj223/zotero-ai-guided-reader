@@ -38,6 +38,7 @@ function setup() {
     allowLoopbackHttp: false,
   };
   let storedToken = "";
+  let pendingOrder: LicenseOrder | undefined;
   const storage: LicenseStorage = {
     getOrCreateDeviceId: () => "device-123",
     readEntitlementToken: () => storedToken,
@@ -46,6 +47,13 @@ function setup() {
     },
     clearEntitlementToken: () => {
       storedToken = "";
+    },
+    readPendingOrder: () => pendingOrder,
+    savePendingOrder: (order) => {
+      pendingOrder = order;
+    },
+    clearPendingOrder: () => {
+      pendingOrder = undefined;
     },
   };
   const catalog: LicenseCatalog = {
@@ -71,6 +79,7 @@ function setup() {
     storage,
     catalog,
     readStoredToken: () => storedToken,
+    readPendingOrder: () => pendingOrder,
     setStoredToken: (value: string) => {
       storedToken = value;
     },
@@ -262,7 +271,96 @@ test("activates a paid order only after verifying its signed entitlement", async
   await manager.initialize();
 
   assert.deepEqual(await manager.createOrder("pro_monthly"), order);
+  assert.deepEqual(state.readPendingOrder(), order);
   const result = await manager.pollOrder(order);
   assert.equal(result.snapshot?.status, "pro");
   assert.equal(state.readStoredToken(), pro.entitlementToken);
+  assert.equal(state.readPendingOrder(), undefined);
+});
+
+test("one cancelled initializer does not cancel another caller", async () => {
+  const state = setup();
+  const trial = issued(state.signer, {
+    kind: "trial",
+    planId: "trial",
+    validUntil: now + 7 * DAY_MS,
+  });
+  let resolveCatalog!: (value: LicenseCatalog) => void;
+  const catalogPromise = new Promise<LicenseCatalog>((resolve) => {
+    resolveCatalog = resolve;
+  });
+  const gateway = {
+    catalog: async () => catalogPromise,
+    startTrial: async () => trial,
+    createOrder: async () => {
+      throw new Error("not used");
+    },
+    pollOrder: async () => {
+      throw new Error("not used");
+    },
+    refresh: async () => {
+      throw new Error("not used");
+    },
+  } satisfies LicenseGateway;
+  const manager = new LicenseManager({
+    config: state.config,
+    gateway,
+    storage: state.storage,
+    now: () => now,
+  });
+  const firstController = new AbortController();
+  const first = manager.initialize(firstController.signal);
+  const second = manager.initialize();
+  firstController.abort();
+  resolveCatalog(state.catalog);
+
+  await assert.rejects(first, /abort/i);
+  assert.equal((await second).status, "trial");
+});
+
+test("keeps a token signed by an unknown key for recovery after update", async () => {
+  const state = setup();
+  const unknownPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const unknownSigner = new EntitlementSigner(
+    unknownPair.privateKey,
+    unknownPair.publicKey,
+    {
+      keyId: "license-key-future",
+      issuer: "https://license.example.test",
+      audience: "zotero-ai-guided-reader",
+      randomTokenId: () => "entitlement_future_001",
+    },
+  );
+  const futureToken = issued(unknownSigner, {
+    kind: "pro",
+    planId: "pro_monthly",
+    validUntil: now + 30 * DAY_MS,
+  }).entitlementToken;
+  state.setStoredToken(futureToken);
+  const gateway = {
+    catalog: async () => state.catalog,
+    startTrial: async () => {
+      throw new Error("trial must not replace an unknown-key token");
+    },
+    createOrder: async () => {
+      throw new Error("not used");
+    },
+    pollOrder: async () => {
+      throw new Error("not used");
+    },
+    refresh: async () => {
+      throw new Error("not used");
+    },
+  } satisfies LicenseGateway;
+  const manager = new LicenseManager({
+    config: state.config,
+    gateway,
+    storage: state.storage,
+    now: () => now,
+  });
+
+  const snapshot = await manager.initialize();
+  assert.equal(snapshot.status, "error");
+  assert.match(snapshot.message || "", /更新/);
+  assert.equal(state.readStoredToken(), futureToken);
 });

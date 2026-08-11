@@ -63,6 +63,21 @@ export function LicensePanel({
           </div>
         )}
 
+        {!compact &&
+          snapshot.plans.length === 0 &&
+          !order &&
+          snapshot.status !== "loading" &&
+          snapshot.status !== "unavailable" && (
+            <button
+              type="button"
+              className="zg-license-retry"
+              disabled={busy}
+              onClick={() => void controller.retryLicense()}
+            >
+              重试获取套餐
+            </button>
+          )}
+
         {!compact && order && (
           <div
             className={`zg-payment${order.checkoutUrl ? " zg-payment-link" : ""}`}
@@ -115,6 +130,7 @@ const licensePanelStyles = `
 .zg-license-error { background: #fff1f1; color: #8a1f1f; }
 .zg-license-message { background: #edf8f1; color: #24533a; }
 .zg-license-manage { flex: 0 0 auto; height: auto !important; min-height: 28px; padding: 4px 10px; white-space: nowrap; }
+.zg-license-retry { height: auto !important; margin-top: 8px; min-height: 32px; padding: 5px 10px; width: 100%; }
 .zg-plan-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); margin-top: 9px; min-width: 0; }
 .zg-plan-grid button { align-items: flex-start; box-sizing: border-box; display: flex; flex-direction: column; height: auto !important; min-height: 72px; min-width: 0; padding: 8px 10px; text-align: left; }
 .zg-plan-grid button span, .zg-plan-grid button strong, .zg-plan-grid button small { max-width: 100%; overflow-wrap: anywhere; }

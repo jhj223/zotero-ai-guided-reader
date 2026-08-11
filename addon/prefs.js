@@ -19,3 +19,4 @@ pref("semanticBaseUrl", "");
 pref("temporaryHighlight", true);
 pref("licenseDeviceId", "");
 pref("licenseEntitlementToken", "");
+pref("licensePendingOrder", "");

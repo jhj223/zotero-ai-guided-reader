@@ -98,11 +98,12 @@ export class LicenseManager {
   }
 
   initialize(signal?: AbortSignal): Promise<LicenseSnapshot> {
-    if (this.initialization) return this.initialization;
-    this.initialization = this.initializeOnce(signal).finally(() => {
-      this.initialization = undefined;
-    });
-    return this.initialization;
+    if (!this.initialization) {
+      this.initialization = this.initializeOnce().finally(() => {
+        this.initialization = undefined;
+      });
+    }
+    return waitForInitialization(this.initialization, signal);
   }
 
   async requirePro(signal?: AbortSignal): Promise<LicenseSnapshot> {
@@ -117,7 +118,17 @@ export class LicenseManager {
   ): Promise<LicenseOrder> {
     const { gateway } = this.requireEnabled();
     const deviceId = this.dependencies.storage.getOrCreateDeviceId();
-    return gateway.createOrder(deviceId, planId, signal);
+    const order = await gateway.createOrder(deviceId, planId, signal);
+    this.dependencies.storage.savePendingOrder(order);
+    return order;
+  }
+
+  pendingOrder(): LicenseOrder | undefined {
+    return this.dependencies.storage.readPendingOrder();
+  }
+
+  dismissPendingOrder(): void {
+    this.dependencies.storage.clearPendingOrder();
   }
 
   async pollOrder(
@@ -131,6 +142,9 @@ export class LicenseManager {
       signal,
     );
     if (result.status !== "paid" || !result.entitlementToken) {
+      if (result.status !== "pending") {
+        this.dependencies.storage.clearPendingOrder();
+      }
       return { order: result };
     }
     const snapshot = await this.acceptIssued(
@@ -139,6 +153,7 @@ export class LicenseManager {
       },
       this.snapshot.plans,
     );
+    this.dependencies.storage.clearPendingOrder();
     return { order: result, snapshot };
   }
 
@@ -206,7 +221,19 @@ export class LicenseManager {
             ),
           );
         }
-      } catch {
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === "Unknown entitlement signing key."
+        ) {
+          return this.setSnapshot({
+            status: "error",
+            canUsePro: false,
+            plans,
+            deviceId,
+            message: "授权使用了新版签名密钥，请更新插件后重试。",
+          });
+        }
         this.dependencies.storage.clearEntitlementToken();
       }
     }
@@ -288,6 +315,27 @@ export class LicenseManager {
     this.snapshot = snapshot;
     return snapshot;
   }
+}
+
+function waitForInitialization(
+  initialization: Promise<LicenseSnapshot>,
+  signal?: AbortSignal,
+): Promise<LicenseSnapshot> {
+  if (!signal) return initialization;
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(abortError());
+    signal.addEventListener("abort", onAbort, { once: true });
+    void initialization.then(resolve, reject).finally(() => {
+      signal.removeEventListener("abort", onAbort);
+    });
+  });
+}
+
+function abortError(): Error {
+  const error = new Error("License initialization aborted.");
+  error.name = "AbortError";
+  return error;
 }
 
 let bundledManager: LicenseManager | undefined;

@@ -46,12 +46,14 @@ npm run license:worker:dry-run
    npx --prefix services/licensing-worker wrangler d1 migrations apply DB --remote
    ```
 
-3. 通过 `wrangler secret put 名称` 的隐藏输入设置以下 10 个绑定。不要把值写入命令行、
+3. 通过 `wrangler secret put 名称` 的隐藏输入设置以下绑定。不要把值写入命令行、
    文档、Git、聊天记录或 XPI：
    - `LICENSE_ISSUER`：部署后的 Worker HTTPS 根地址；
    - `LICENSE_AUDIENCE`：固定为插件受众标识；
    - `LICENSE_KEY_ID`：当前授权签名公钥的标识；
    - `LICENSE_PRIVATE_KEY_PEM`：PKCS#8 RSA 私钥；
+   - `LICENSE_PREVIOUS_PUBLIC_KEYS_JSON`：可选，密钥轮换期间保留的旧 RSA 公钥 JWK
+     对象，键为旧 key ID；不得包含任何私钥字段；
    - `SOURCE_URL`：与部署版本对应的公开源码地址；
    - `RATE_LIMIT_PEPPER`：至少 32 字节的随机值；
    - `AFDIAN_USER_ID`：爱发电开发者页显示的 32 位用户 ID；
@@ -97,8 +99,9 @@ npm run build
 - D1 默认提供 Time Travel。发布前记录数据库 ID，并定期执行恢复演练；迁移前先确认
   可恢复时间点。恢复后检查订单/交易唯一约束和权益有效期。
 - 回滚 Worker 代码时不要回滚已经应用的 D1 迁移；先部署向后兼容版本，再处理迁移。
-- 授权密钥轮换顺序：生成新 key ID → 新旧公钥同时进入插件 → 先发布插件 → Worker
-  切换新私钥 → 等旧离线窗口结束 → 后续版本移除旧公钥。
+- 授权密钥轮换顺序：生成新 key ID → 新旧公钥同时进入插件 → 将旧公钥写入 Worker 的
+  `LICENSE_PREVIOUS_PUBLIC_KEYS_JSON` → 先发布插件 → Worker 切换新私钥 → 等旧令牌
+  的最长恢复宽限期结束 → 后续版本移除旧公钥。旧私钥不得保留。
 - 爱发电 Token 泄露时立即在爱发电重新生成，再更新 Cloudflare Secret；旧 Token 不得
   继续使用。
 - Webhook 漏发由每 10 分钟一次的 cron 补查。持续失败时查看脱敏 Worker 日志，修复后

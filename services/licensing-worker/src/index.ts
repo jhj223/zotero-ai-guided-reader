@@ -21,6 +21,7 @@ const CLIENT_VERSION = /^[0-9A-Za-z.+_-]{1,64}$/;
 const DEVICE_ID = /^[A-Za-z0-9_-]{8,128}$/;
 const ORDER_ID = /^ord_[A-Za-z0-9_-]{20,128}$/;
 const POLL_TOKEN = /^poll_[A-Za-z0-9_-]{20,128}$/;
+const REFRESH_CREDENTIAL_GRACE_MS = 90 * 86_400_000;
 
 type AppBindings = { Bindings: WorkerEnv };
 type WorkerFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -87,10 +88,17 @@ export function createWorkerApp(options: AppOptions = {}) {
       context,
       "trial-source",
       sourceIdentity(context),
-      20,
-      3_600_000,
+      3,
+      24 * 3_600_000,
     );
-    await enforceLimit(state, context, "trial-device", deviceId, 5, 3_600_000);
+    await enforceLimit(
+      state,
+      context,
+      "trial-device",
+      deviceId,
+      3,
+      24 * 3_600_000,
+    );
     const existing = await state.store.getEntitlement(deviceId);
     if (existing?.kind === "pro") {
       throw new ApiError(409, "ENTITLEMENT_EXISTS", "该设备已有付费授权。");
@@ -209,7 +217,7 @@ export function createWorkerApp(options: AppOptions = {}) {
     }
     const currentTime = now();
     if (
-      claims.validUntil <= currentTime ||
+      claims.validUntil < currentTime - REFRESH_CREDENTIAL_GRACE_MS ||
       claims.issuedAt > currentTime + 5 * 60 * 1000
     ) {
       throw new ApiError(401, "INVALID_ENTITLEMENT", "授权令牌无效。");
@@ -434,6 +442,7 @@ function signingConfig(config: RuntimeConfig) {
     audience: config.audience,
     keyId: config.keyId,
     privateKeyPem: config.privateKeyPem,
+    verificationKeys: config.previousPublicKeys,
   };
 }
 
