@@ -36,7 +36,7 @@ export function GuidedReaderApp({ item }: { item: Zotero.Item }) {
 
   const service = useMemo(
     () => new GuidedReadingService(item, setProgress),
-    [item.id],
+    [item],
   );
   const license = useLicenseController();
   const canUseCommercialActions = license.snapshot.canUsePro;

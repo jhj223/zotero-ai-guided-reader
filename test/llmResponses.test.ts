@@ -451,7 +451,9 @@ test("adds a table-backed final selection when the model omits that bullet", () 
 
   assert.equal(outline.sections[0].bullets.length, 2);
   const selection = outline.sections[0].bullets[1];
-  assert.match(selection.claim, /表 3.*缓蚀剂1.*39\.494.*选择缓蚀剂1/u);
+  assert.match(selection.claim, /表 3.*39\.494.*缓蚀剂1/u);
+  assert.match(selection.claim, /原文随后写明.*选择缓蚀剂作为/u);
+  assert.doesNotMatch(selection.claim, /原文据此选择缓蚀剂1/u);
   assert.deepEqual(selection.visualEvidence, [
     { anchorId: "corrosion_table_3" },
   ]);
@@ -548,7 +550,7 @@ test("propagates a unique table-backed inhibitor number to the final selection",
   );
 });
 
-test("drops a generic final inhibitor selection when no numbered row can resolve it", () => {
+test("keeps a grounded generic final selection when no numbered row can resolve it", () => {
   const outline = filterOutlineToKnownAnchors(
     {
       title: "Paper",
@@ -574,7 +576,12 @@ test("drops a generic final inhibitor selection when no numbered row can resolve
     anchors,
   );
 
-  assert.deepEqual(outline.sections, []);
+  assert.equal(outline.sections.length, 1);
+  assert.equal(outline.sections[0].bullets.length, 1);
+  assert.equal(
+    outline.sections[0].bullets[0].claim,
+    "最终选择缓蚀剂作为稠化酸体系用缓蚀剂。",
+  );
 });
 
 test("does not propagate a table match from an unrelated text anchor", () => {
@@ -614,8 +621,10 @@ test("does not propagate a table match from an unrelated text anchor", () => {
     anchors,
   );
 
-  assert.equal(outline.sections[0].bullets.length, 1);
-  assert.doesNotMatch(outline.sections[0].bullets[0].claim, /缓蚀剂1/);
+  assert.equal(outline.sections[0].bullets.length, 2);
+  for (const bullet of outline.sections[0].bullets) {
+    assert.doesNotMatch(bullet.claim, /缓蚀剂1/);
+  }
 });
 
 test("does not replace an inhibitor evaluation label with a row identity", () => {
