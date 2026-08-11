@@ -13,7 +13,9 @@ const licensePublicKeys = parseLicensePublicKeys(
 export default defineConfig({
   source: ["src", "addon"],
   dist: ".scaffold/build",
-  name: pkg.config.addonName,
+  // Keep the release asset URL ASCII-only while the manifest uses the
+  // user-facing Chinese name from build.define.addonName.
+  name: pkg.name,
   id: pkg.config.addonID,
   namespace: pkg.config.addonRef,
   updateURL: `https://github.com/{{owner}}/{{repo}}/releases/download/release/${

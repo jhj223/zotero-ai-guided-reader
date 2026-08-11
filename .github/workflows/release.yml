@@ -14,6 +14,24 @@ jobs:
   create-release:
     uses: zotero-plugin-dev/workflows/.github/workflows/release-plugin.yml@1539798bf7f71455f77e682b9ca49078249b34e7
     with:
-      build: "npm ci --prefix services/licensing && npm run commercial:check && npm run license:test && npm run license:build && npm run licenses:audit && npm run build && npm run release:sbom && npm run release:checksums"
+      build: >-
+        npm ci --prefix services/licensing &&
+        npm ci --prefix services/licensing-worker &&
+        npm run commercial:check &&
+        npm run licenses:audit &&
+        npm audit --omit=dev --audit-level=high &&
+        npm audit --prefix services/licensing --omit=dev --audit-level=high &&
+        npm audit --prefix services/licensing-worker --audit-level=high &&
+        npm run test &&
+        npm run license:test &&
+        npm run license:build &&
+        npm run license:worker:test &&
+        npm run license:worker:typecheck &&
+        npm run license:worker:dry-run &&
+        npm run afdian:relay:test &&
+        npm run lint:check &&
+        npm run build &&
+        npm run release:sbom &&
+        npm run release:checksums
       release: "npm run release"
     secrets: inherit

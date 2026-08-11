@@ -136,9 +136,8 @@ MinerU `page_idx` 和 Zotero Reader 内部 `pageIndex` 都按 0 开始；`zotero
 - 图、表和公式支持完整对象级定位；子图、曲线、数据点、表格单元格和公式子表达式级定位不在当前范围。
 - 本地 Codex/Claude CLI 会使用用户现有登录状态和模型额度；插件不代管登录。
 - 不同语义向量厂商的模型名称和可用额度会变化；预设失效时可填写厂商当前模型，非预设厂商可使用“自定义 OpenAI 兼容接口”。
-- 正式商店上架仍需先创建公开 GitHub 仓库、公开对应源码和 XPI、配置生产授权服务，
-  再提交 Zotero Add-on Market；本仓库已提供发布工作流和验收清单，但不会把尚未
-  完成的外部申请描述为已经上架。
+- 正式版通过 GitHub Releases 提供 XPI、更新清单、SBOM 和 SHA-256；Zotero Add-on
+  Market 收录状态以其数据源中的公开记录为准。
 
 ## 后续方向
 
