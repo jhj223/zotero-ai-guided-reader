@@ -9,6 +9,7 @@
     {
       "binding": "DB",
       "database_name": "zotero-ai-guided-reader-licensing",
+      "database_id": "8262d84a-3305-4978-b6c8-3c9f36c1498f",
       "migrations_dir": "migrations",
     },
   ],
