@@ -12,7 +12,12 @@ const ALLOWED_LICENSES = new Set([
 
 const manifests = [
   ["plugin", resolve("package-lock.json")],
-  ["licensing-service", resolve("services/licensing/package-lock.json")],
+  ["licensing-worker", resolve("services/licensing-worker/package-lock.json")],
+  [
+    "afdian-webhook-relay",
+    resolve("services/afdian-webhook-relay/package-lock.json"),
+  ],
+  ["legacy-licensing-service", resolve("services/licensing/package-lock.json")],
 ];
 
 const findings = [];

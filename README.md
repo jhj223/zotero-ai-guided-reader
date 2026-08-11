@@ -2,6 +2,9 @@
 
 面向 Zotero 9.0.x（当前已在 Zotero 9.0.6 验证）的中文论文带读插件。插件用用户自己的 MinerU Token 解析 PDF，再通过用户选择的云端 LLM 或本地 CLI 生成结构化导读。导读论述可点击返回原文，并优先精确选中对应文字。
 
+当前正式支持的插件界面和生成语言为简体中文；`en-US` 资源仅用于 Zotero 菜单与设置
+框架的回退标签，不代表完整英文界面支持。
+
 项目基于 `windingwind/zotero-plugin-template`、`zotero-plugin-scaffold`、TypeScript、React、`zotero-plugin-toolkit`、`zotero-types`、JSZip 和 KaTeX。
 
 ## 开发与安装
@@ -54,6 +57,10 @@ npm start
 还会主动查单，丢失通知时由定时任务补查。部署说明见
 [`services/licensing-worker/README.md`](services/licensing-worker/README.md)，真实收费验收项见
 [`docs/COMMERCIAL_RELEASE_CHECKLIST.md`](docs/COMMERCIAL_RELEASE_CHECKLIST.md)。
+
+`services/licensing/` 中的 Node/SQLite 与微信、银联实现仅保留作历史参考和兼容性测试，
+未部署且不是当前收费链路；生产授权仅使用 `services/licensing-worker/` 与
+`services/afdian-webhook-relay/`。
 
 ## 授权安全与开源边界
 

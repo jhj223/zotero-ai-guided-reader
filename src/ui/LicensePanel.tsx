@@ -2,6 +2,9 @@ import React from "react";
 import type { LicenseSnapshot } from "../runtime/licenseManager";
 import type { LicenseController } from "./useLicenseController";
 
+const POLICY_BASE =
+  "https://github.com/jhj223/zotero-ai-guided-reader/blob/main";
+
 export function LicensePanel({
   controller,
   compact = false,
@@ -48,19 +51,35 @@ export function LicensePanel({
         {message && <div className="zg-license-message">{message}</div>}
 
         {!compact && snapshot.plans.length > 0 && !order && (
-          <div className="zg-plan-grid">
-            {snapshot.plans.map((plan) => (
+          <>
+            <div className="zg-plan-grid">
+              {snapshot.plans.map((plan) => (
+                <button
+                  key={plan.id}
+                  disabled={busy}
+                  onClick={() => void controller.purchase(plan.id)}
+                >
+                  <span>{plan.label}</span>
+                  <strong>{formatPrice(plan.priceFen)}</strong>
+                  <small>{plan.durationDays} 天 · 手动续费</small>
+                </button>
+              ))}
+            </div>
+            <div className="zg-license-policies">
+              购买前请阅读
               <button
-                key={plan.id}
-                disabled={busy}
-                onClick={() => void controller.purchase(plan.id)}
+                type="button"
+                onClick={() => openPolicy("TERMS_OF_SERVICE.md")}
               >
-                <span>{plan.label}</span>
-                <strong>{formatPrice(plan.priceFen)}</strong>
-                <small>{plan.durationDays} 天 · 手动续费</small>
+                付费服务条款
               </button>
-            ))}
-          </div>
+              和
+              <button type="button" onClick={() => openPolicy("PRIVACY.md")}>
+                隐私政策
+              </button>
+              。付款不自动续费。
+            </div>
+          </>
         )}
 
         {!compact &&
@@ -136,6 +155,8 @@ const licensePanelStyles = `
 .zg-plan-grid button span, .zg-plan-grid button strong, .zg-plan-grid button small { max-width: 100%; overflow-wrap: anywhere; }
 .zg-plan-grid button strong { color: #174f86; font-size: 16px; line-height: 1.4; }
 .zg-plan-grid button small { color: #647282; font-size: 11px; line-height: 1.4; }
+.zg-license-policies { color: #647282; font-size: 11px; line-height: 1.5; margin-top: 7px; }
+.zg-license-policies button { background: transparent; border: 0; color: #174f86; display: inline; height: auto !important; min-height: 0; padding: 0 2px; text-decoration: underline; }
 .zg-payment { align-items: center; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(136px, 100%), 1fr)); margin-top: 10px; min-width: 0; }
 .zg-payment-link { grid-template-columns: minmax(0, 1fr); }
 .zg-payment img { background: white; border: 1px solid #d3dce6; box-sizing: border-box; display: block; height: auto; max-width: 100%; width: 136px; }
@@ -147,6 +168,10 @@ const licensePanelStyles = `
 
 export function formatPrice(priceFen: number): string {
   return `¥${(priceFen / 100).toFixed(2)}`;
+}
+
+function openPolicy(file: "TERMS_OF_SERVICE.md" | "PRIVACY.md"): void {
+  Zotero.launchURL(`${POLICY_BASE}/${file}`);
 }
 
 function licenseStatusLabel(snapshot: LicenseSnapshot): string {

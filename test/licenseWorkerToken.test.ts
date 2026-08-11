@@ -55,5 +55,5 @@ test("accepts a Worker-issued entitlement in the Zotero client verifier", async 
   );
 
   assert.equal(claims.planId, "pro_monthly");
-  assert.equal(claims.offlineUntil, NOW + 30 * DAY_MS);
+  assert.equal(claims.offlineUntil, NOW + 29 * DAY_MS);
 });

@@ -56,16 +56,19 @@
 npm ci
 npm ci --prefix services/licensing
 npm ci --prefix services/licensing-worker
+npm ci --prefix services/afdian-webhook-relay
 npm run licenses:audit
 npm audit --omit=dev --audit-level=high
 npm audit --prefix services/licensing --omit=dev --audit-level=high
-npm audit --prefix services/licensing-worker --audit-level=high
+npm audit --prefix services/licensing-worker --omit=dev --audit-level=high
+npm audit --prefix services/afdian-webhook-relay --omit=dev --audit-level=high
 npm test
-npm run license:test
-npm run license:build
+npm run legacy-license:test
+npm run legacy-license:build
 npm run license:worker:test
 npm run license:worker:typecheck
 npm run license:worker:dry-run
+npm run afdian:relay:test
 npm run lint:check
 npm run build
 npm run release:sbom

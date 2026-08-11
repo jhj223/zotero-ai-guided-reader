@@ -37,17 +37,22 @@ jobs:
     steps:
       - name: Setup JS
         uses: zotero-plugin-dev/workflows/setup-js@1539798bf7f71455f77e682b9ca49078249b34e7
-      - name: Install licensing service
-        run: npm ci --prefix services/licensing
+      - name: Install service dependencies
+        run: |
+          npm ci --prefix services/licensing
+          npm ci --prefix services/licensing-worker
+          npm ci --prefix services/afdian-webhook-relay
       - name: Audit runtime licenses
         run: npm run licenses:audit
       - name: Audit production dependencies
         run: |
           npm audit --omit=dev --audit-level=high
           npm audit --prefix services/licensing --omit=dev --audit-level=high
+          npm audit --prefix services/licensing-worker --omit=dev --audit-level=high
+          npm audit --prefix services/afdian-webhook-relay --omit=dev --audit-level=high
       - name: Run Build
         run: |
-          npm run license:build
+          npm run legacy-license:build
           npm run build
           npm run release:sbom
           npm run release:checksums
@@ -65,10 +70,15 @@ jobs:
     steps:
       - name: Setup JS
         uses: zotero-plugin-dev/workflows/setup-js@1539798bf7f71455f77e682b9ca49078249b34e7
-      - name: Install licensing service
-        run: npm ci --prefix services/licensing
+      - name: Install service dependencies
+        run: |
+          npm ci --prefix services/licensing
+          npm ci --prefix services/licensing-worker
+          npm ci --prefix services/afdian-webhook-relay
       - name: Run tests
         run: |
           npm run test
-          npm run license:test
+          npm run legacy-license:test
+          npm run license:worker:test
+          npm run license:worker:typecheck
           npm run afdian:relay:test

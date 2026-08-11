@@ -1,7 +1,9 @@
-# 授权与微信支付服务
+# 旧版授权与支付服务（未部署）
 
-该服务是官方付费能力的安全边界。套餐价格、试用、订单、微信支付回调和 RSA 授权
-签发均在服务端完成；插件不包含私钥，也不能提交金额改变价格。
+此 Node/SQLite 目录只保留兼容性测试、历史迁移参考和替代支付通道实现，不是当前生产
+收费链路，也不随 XPI 部署。当前生产安全边界是
+[`../licensing-worker`](../licensing-worker/README.md) 中的 Cloudflare Worker/D1 与爱发电
+查单流程。任何公开说明均不得把本目录中的微信或银联实现描述为已上线。
 
 ## 本地沙盒
 
@@ -10,7 +12,7 @@ npm ci --prefix services/licensing
 $env:NODE_ENV = "development"
 $env:PUBLIC_BASE_URL = "http://127.0.0.1:8787"
 $env:SANDBOX_SECRET = "replace-with-at-least-32-random-bytes"
-npm run license:dev
+npm run legacy-license:dev
 ```
 
 沙盒二维码打开本地确认页，不会真实扣款。生产环境会拒绝
@@ -114,7 +116,7 @@ issuer、audience 和公钥；绝不能包含服务端私钥或微信密钥。
 
 ```powershell
 npm ci --prefix services/licensing
-npm run license:build
+npm run legacy-license:build
 node services/licensing/dist/main.js
 ```
 

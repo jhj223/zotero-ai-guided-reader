@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 私密报告安全漏洞
+    url: https://github.com/jhj223/zotero-ai-guided-reader/security/advisories/new
+    about: 支付、授权绕过、密钥泄露等安全问题不要公开提交。
