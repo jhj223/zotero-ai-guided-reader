@@ -38,6 +38,7 @@
     "license:worker:migrate:remote": "npm --prefix services/licensing-worker run db:migrate:remote",
     "license:worker:dry-run": "npm --prefix services/licensing-worker run dry-run",
     "license:worker:deploy": "npm --prefix services/licensing-worker run deploy",
+    "afdian:relay:test": "npm --prefix services/afdian-webhook-relay test",
     "license:keys": "node scripts/generate-license-keys.mjs",
     "licenses:audit": "node scripts/audit-runtime-licenses.mjs",
     "commercial:check": "node scripts/assert-commercial-release-ready.mjs",

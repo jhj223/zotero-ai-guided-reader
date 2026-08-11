@@ -71,3 +71,4 @@ jobs:
         run: |
           npm run test
           npm run license:test
+          npm run afdian:relay:test
