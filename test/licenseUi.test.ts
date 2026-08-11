@@ -63,9 +63,15 @@ test("full subscription panel exposes checkout controls without clipping plan bu
   assert.match(panel, /打开爱发电付款/);
   assert.match(panel, /controller\.openCheckout/);
   assert.match(panel, /不会自动续扣/);
+  assert.match(panel, /付费服务条款/);
+  assert.match(panel, /隐私政策/);
+  assert.match(panel, /TERMS_OF_SERVICE\.md/);
+  assert.match(panel, /PRIVACY\.md/);
   assert.match(hook, /POLL_INTERVAL_MS = 3_000/);
   assert.match(hook, /MAX_POLLING_MS = 5 \* 60 \* 1000/);
   assert.match(hook, /manager\.pollOrder/);
+  assert.match(hook, /manager\.pendingOrder\(\)/);
+  assert.match(hook, /retryLicense/);
   assert.match(hook, /Zotero\.launchURL/);
   assert.match(hook, /validateAfdianCheckoutUrl/);
   assert.match(panel, /\.zg-plan-grid \{[^}]*minmax\(118px, 1fr\)/);
@@ -82,4 +88,5 @@ test("full subscription panel exposes checkout controls without clipping plan bu
     /\.zg-payment \{[^}]*auto-fit[^}]*minmax\(min\(136px, 100%\), 1fr\)/,
   );
   assert.match(panel, /\.zg-payment-link \{[^}]*minmax\(0, 1fr\)/);
+  assert.match(panel, /重试获取套餐/);
 });

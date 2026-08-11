@@ -6,6 +6,13 @@ import {
 } from "../core/semanticSettings";
 import type { ProviderSettings } from "../core/types";
 import type { FetchLike } from "./keyValidation";
+import {
+  ensureApiVersionBaseUrl,
+  fetchWithTimeout,
+  normalizeServiceBaseUrl,
+} from "./networkSafety";
+
+const DISCOVERY_TIMEOUT_MS = 30_000;
 
 export interface ModelDiscoveryResult {
   models: string[];
@@ -26,15 +33,15 @@ export async function fetchLlmModels(
     throw new Error("请先填写 LLM API Key。");
   }
 
-  const baseUrl = (settings.baseUrl || provider.baseUrl || "").replace(
-    /\/+$/,
-    "",
+  const baseUrl = normalizeServiceBaseUrl(
+    settings.baseUrl || provider.baseUrl || "",
+    { label: "LLM Base URL" },
   );
   if (!baseUrl) throw new Error("请先填写 Base URL。");
 
   const anthropic = settings.llmProvider === "anthropic";
   const endpoint = anthropic
-    ? `${baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`}/models`
+    ? `${ensureApiVersionBaseUrl(baseUrl, "v1")}/models`
     : `${baseUrl}/models${
         settings.llmProvider === "siliconflow" ? "?type=text&sub_type=chat" : ""
       }`;
@@ -48,7 +55,12 @@ export async function fetchLlmModels(
 
   let response;
   try {
-    response = await fetchImpl(endpoint, { method: "GET", headers });
+    response = await fetchWithTimeout(
+      fetchImpl,
+      endpoint,
+      { method: "GET", headers, redirect: "error" },
+      DISCOVERY_TIMEOUT_MS,
+    );
   } catch (error) {
     throw new Error(
       `无法连接 ${provider.label}：${error instanceof Error ? error.message : String(error)}`,
@@ -101,9 +113,12 @@ export async function fetchSemanticModels(
     };
   }
 
-  const baseUrl = (settings.baseUrl || provider.baseUrl || "").replace(
-    /\/+$/,
-    "",
+  const baseUrl = normalizeServiceBaseUrl(
+    settings.baseUrl || provider.baseUrl || "",
+    {
+      allowLoopbackHttp: provider.kind === "ollama",
+      label: "语义定位 Base URL",
+    },
   );
   if (!baseUrl) throw new Error("请先填写语义定位 Base URL。");
   if (provider.kind !== "ollama" && !settings.apiKey.trim()) {
@@ -118,7 +133,12 @@ export async function fetchSemanticModels(
 
   let response;
   try {
-    response = await fetchImpl(endpoint, { method: "GET", headers });
+    response = await fetchWithTimeout(
+      fetchImpl,
+      endpoint,
+      { method: "GET", headers, redirect: "error" },
+      DISCOVERY_TIMEOUT_MS,
+    );
   } catch (error) {
     throw new Error(
       `无法连接 ${provider.label}：${error instanceof Error ? error.message : String(error)}`,

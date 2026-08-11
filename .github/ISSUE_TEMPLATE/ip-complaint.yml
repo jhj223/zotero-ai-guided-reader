@@ -1,0 +1,53 @@
+name: 知识产权投诉
+description: 报告 AGPL 违规、冒名仿冒或项目使用第三方受保护内容的问题
+title: "[知识产权] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请勿公开提交身份证件、住址、付款账号、论文正文、API Key 或未披露的安全漏洞。涉及敏感材料时，请先通过爱发电私信联系运营者；安全漏洞请使用私密安全报告入口。
+  - type: dropdown
+    id: category
+    attributes:
+      label: 投诉类型
+      options:
+        - 未按 AGPL 提供对应源码或声明
+        - 冒用官方名称、图标、域名或收款方式
+        - 未经授权复制原创文档或视觉素材
+        - 项目疑似使用第三方受保护内容
+    validations:
+      required: true
+  - type: textarea
+    id: rights
+    attributes:
+      label: 权利基础
+      description: 说明权利人身份、授权关系和可公开核验的权利证明。
+    validations:
+      required: true
+  - type: textarea
+    id: location
+    attributes:
+      label: 涉嫌侵权内容的位置
+      description: 提供准确链接、文件路径、版本号、提交号或 XPI SHA-256。
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 事实与证据
+      description: 仅提交可公开材料；敏感证据不要上传到 Issue。
+    validations:
+      required: true
+  - type: textarea
+    id: action
+    attributes:
+      label: 请求采取的措施
+    validations:
+      required: true
+  - type: checkboxes
+    id: declaration
+    attributes:
+      label: 声明
+      options:
+        - label: 我确认上述信息真实，并理解合规修改、销售或再分发 AGPL 代码本身不当然构成侵权。
+          required: true

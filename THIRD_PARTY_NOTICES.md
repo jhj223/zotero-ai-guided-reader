@@ -1,8 +1,8 @@
 # 第三方软件声明
 
 本项目本身采用 `AGPL-3.0-or-later`。以下清单按
-`package-lock.json` 和 `services/licensing/package-lock.json` 中实际进入运行时的
-依赖生成；开发、测试和构建专用依赖不在此表。发布前由
+插件、Cloudflare 授权 Worker、爱发电 Webhook 中继和旧版授权服务各自的
+`package-lock.json` 中实际进入运行时的依赖生成；开发、测试和构建专用依赖不在此表。发布前由
 `npm run licenses:audit` 自动阻止未知或未审核的运行时许可证进入发行包。
 
 ## 插件运行时
@@ -14,7 +14,7 @@
 | inherits                |  2.0.4 | ISC                                              |
 | isarray                 |  1.0.0 | MIT                                              |
 | jszip                   | 3.10.1 | MIT OR GPL-3.0-or-later（本项目按 MIT 条款使用） |
-| katex                   | 0.18.1 | MIT                                              |
+| katex                   | 0.18.4 | MIT                                              |
 | commander（KaTeX 依赖） |  8.3.0 | MIT                                              |
 | lie                     |  3.3.0 | MIT                                              |
 | pako                    | 1.0.11 | MIT AND Zlib                                     |
@@ -29,7 +29,19 @@
 | util-deprecate          |  1.0.2 | MIT                                              |
 | zotero-plugin-toolkit   |  5.1.4 | MIT                                              |
 
-## 授权服务运行时
+## Cloudflare 授权 Worker 运行时
+
+| 软件包 | 版本   | 许可证 |
+| ------ | ------ | ------ |
+| hono   | 4.13.1 | MIT    |
+
+## 爱发电 Webhook 中继运行时
+
+中继没有第三方运行时依赖。
+
+## 旧版授权服务运行时（未部署）
+
+此目录只保留兼容性测试和历史迁移参考，不是当前生产收费链路。
 
 | 软件包                  |   版本 | 许可证 |
 | ----------------------- | -----: | ------ |

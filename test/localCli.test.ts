@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildCliArguments,
+  cliExecutableCandidates,
+  cliExecutableNames,
   parseCliOutput,
   validateCliModel,
 } from "../src/core/localCli";
@@ -34,6 +36,28 @@ test("Claude CLI invocation disables tools, MCP, and session persistence", () =>
       args.indexOf("--output-format") + 2,
     ),
     ["--output-format", "json"],
+  );
+});
+
+test("discovers native CLI names and known paths on every supported desktop OS", () => {
+  assert.deepEqual(cliExecutableNames("codex-cli", "windows"), ["codex.exe"]);
+  assert.deepEqual(cliExecutableNames("claude-cli", "macos"), ["claude"]);
+  assert.deepEqual(cliExecutableNames("claude-cli", "linux"), ["claude"]);
+
+  assert.ok(
+    cliExecutableCandidates("codex-cli", "windows", {
+      APPDATA: "C:\\Users\\reader\\AppData\\Roaming",
+    }).some((path) => path.endsWith("codex.exe")),
+  );
+  assert.ok(
+    cliExecutableCandidates("claude-cli", "macos", {
+      HOME: "/Users/reader",
+    }).includes("/opt/homebrew/bin/claude"),
+  );
+  assert.ok(
+    cliExecutableCandidates("codex-cli", "linux", {
+      HOME: "/home/reader",
+    }).includes("/home/reader/.local/bin/codex"),
   );
 });
 

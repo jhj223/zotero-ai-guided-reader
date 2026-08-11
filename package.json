@@ -1,7 +1,7 @@
 {
   "name": "zotero-ai-guided-reader",
   "type": "module",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Zotero 9 AI 论文带读：MinerU 解析、证据回跳、图表索引、笔记与 Anki 导出",
   "config": {
     "addonName": "Zotero AI 带读",
@@ -28,9 +28,9 @@
     "release": "zotero-plugin release",
     "test": "tsx --test \"test/**/*.test.ts\"",
     "test:zotero": "zotero-plugin test",
-    "license:dev": "npm --prefix services/licensing run dev",
-    "license:test": "npm --prefix services/licensing test",
-    "license:build": "npm --prefix services/licensing run build",
+    "legacy-license:dev": "npm --prefix services/licensing run dev",
+    "legacy-license:test": "npm --prefix services/licensing test",
+    "legacy-license:build": "npm --prefix services/licensing run build",
     "license:worker:test": "npm --prefix services/licensing-worker test",
     "license:worker:typecheck": "npm --prefix services/licensing-worker run typecheck",
     "license:worker:types": "npm --prefix services/licensing-worker run types",
@@ -48,7 +48,7 @@
   },
   "dependencies": {
     "jszip": "^3.10.1",
-    "katex": "^0.18.1",
+    "katex": "^0.18.4",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "zotero-plugin-toolkit": "^5.1.4"

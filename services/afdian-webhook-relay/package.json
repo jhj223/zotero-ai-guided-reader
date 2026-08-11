@@ -1,7 +1,9 @@
 {
   "name": "zotero-ai-afdian-webhook-relay",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
+  "license": "AGPL-3.0-or-later",
   "scripts": {
     "test": "node --test test/*.test.mjs"
   }

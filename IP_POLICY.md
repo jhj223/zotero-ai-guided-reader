@@ -1,7 +1,7 @@
 # 知识产权与侵权投诉处理政策
 
 投诉入口：
-<https://github.com/jhj223/zotero-ai-guided-reader/issues/new>
+<https://github.com/jhj223/zotero-ai-guided-reader/issues/new?template=ip-complaint.yml>
 
 涉及交易账号、个人信息或未公开证据时，请先在付款账号内通过爱发电私信联系，不要把
 敏感材料公开上传到 GitHub。

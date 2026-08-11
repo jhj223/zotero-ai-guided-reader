@@ -15,10 +15,25 @@ test("builds an import-ready UTF-8 Anki TSV with named columns", () => {
   assert.equal(output.fileName, "耐高温稠化酸体系-anki.tsv");
   assert.match(
     output.content,
-    /^#separator:Tab\n#html:true\n#tags column:3\n#columns:Front\tBack\tTags\n/,
+    /^#separator:Tab\n#html:false\n#tags column:3\n#columns:Front\tBack\tTags\n/,
   );
   assert.match(output.content, /zotero-ai extension 耐高温稠化酸体系/);
   assert.match(output.content, /zotero-ai proof 耐高温稠化酸体系/);
+});
+
+test("exports untrusted guide content as plain text", () => {
+  const output = buildAnkiTsv({
+    title: "Paper",
+    guideText:
+      '第一行包含 <img src=x onerror="alert(1)">。\n第二行仍是同一张卡片。',
+  });
+
+  assert.match(output.content, /^#separator:Tab\n#html:false\n/);
+  assert.doesNotMatch(output.content, /<br>/);
+  assert.match(
+    output.content,
+    /第一行包含 <img src=x onerror="alert\(1\)">。 第二行/,
+  );
 });
 
 test("rejects an empty Anki export instead of creating a header-only file", () => {

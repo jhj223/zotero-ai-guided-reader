@@ -21,6 +21,7 @@ export interface LicenseController {
   purchase(planId: PaidPlanId): Promise<void>;
   openCheckout(): void;
   refreshOrder(): Promise<void>;
+  retryLicense(): Promise<void>;
   dismissOrder(): void;
 }
 
@@ -36,7 +37,10 @@ export function useLicenseController(): LicenseController {
     const controller = new AbortController();
     void manager
       .initialize(controller.signal)
-      .then(setSnapshot)
+      .then((nextSnapshot) => {
+        setSnapshot(nextSnapshot);
+        setOrder(manager.pendingOrder());
+      })
       .catch((reason) => {
         if (!controller.signal.aborted) setError(describeError(reason));
       });
@@ -138,6 +142,24 @@ export function useLicenseController(): LicenseController {
     }
   }, [order]);
 
+  const retryLicense = useCallback(async () => {
+    setBusy(true);
+    setError("");
+    try {
+      setSnapshot(await manager.initialize());
+      setOrder(manager.pendingOrder());
+    } catch (reason) {
+      setError(describeError(reason));
+    } finally {
+      setBusy(false);
+    }
+  }, [manager]);
+
+  const dismissOrder = useCallback(() => {
+    manager.dismissPendingOrder();
+    setOrder(undefined);
+  }, [manager]);
+
   return {
     snapshot,
     order,
@@ -147,7 +169,8 @@ export function useLicenseController(): LicenseController {
     purchase,
     openCheckout,
     refreshOrder,
-    dismissOrder: () => setOrder(undefined),
+    retryLicense,
+    dismissOrder,
   };
 }
 

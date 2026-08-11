@@ -150,7 +150,7 @@ test("llm: anthropic validates via /v1/models with x-api-key", async () => {
   const result = await validateLlmKey(
     llmSettings({
       llmProvider: "anthropic",
-      baseUrl: "https://api.anthropic.com",
+      baseUrl: "https://api.anthropic.com/v1",
       model: "claude-sonnet-5",
     }),
     fakeFetch([{ status: 200, body: { data: [] } }], calls),

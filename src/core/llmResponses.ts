@@ -98,7 +98,6 @@ export function filterOutlineToKnownAnchors(
         const bullets = restoreOmittedNumberedEntities(prepared, anchorById)
           .map(({ text: claim, evidence, visualEvidence }) => {
             if (
-              hasUnresolvedFinalInhibitorSelection(claim) ||
               !numberedEntitiesAreGrounded(
                 claim,
                 evidence,
@@ -189,7 +188,6 @@ export function normalizeSectionGuide(
   )) {
     const { text, evidence, visualEvidence, category } = point;
     if (
-      hasUnresolvedFinalInhibitorSelection(text) ||
       !numberedEntitiesAreGrounded(text, evidence, visualEvidence, anchorById)
     ) {
       continue;
@@ -349,14 +347,16 @@ function addOmittedTableBackedSelections(
       sections.some((section) =>
         section.bullets.some(
           (bullet) =>
-            sourceContainsEntity(bullet.claim, match.entity) &&
-            /最终选择|优选|被选(?:择)?|选为|选择/u.test(bullet.claim),
+            /最终选择|优选|被选(?:择)?|选为|选择/u.test(bullet.claim) &&
+            (bullet.anchorIds.includes(textAnchor.id) ||
+              sourceContainsEntity(bullet.claim, match.entity)),
         ),
       )
     ) {
       continue;
     }
-    const claim = `表 ${match.tableNumber}显示${match.entity}的腐蚀速率为${metric}；原文据此选择${match.entity}作为稠化酸体系用缓蚀剂。`;
+    const visibleSelection = toVisibleSourceText(selectionQuote);
+    const claim = `表 ${match.tableNumber}中与原文指标 ${match.metric} 对应的条目是${match.entity}；原文随后写明“${visibleSelection}”。`;
     const visualEvidence = [{ anchorId: match.tableAnchor.id }];
     if (
       !numberedEntitiesAreGrounded(claim, evidence, visualEvidence, anchorById)

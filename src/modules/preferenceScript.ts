@@ -25,7 +25,6 @@ export async function registerPrefsScripts(window: Window) {
   if (getPref("mineruOcrMode") === "auto") {
     setPref("mineruOcrMode", "never");
   }
-  addon.data.prefs = { window };
   bindValidateButton(window, "llm");
   bindValidateButton(window, "mineru");
   bindValidateButton(window, "semantic");

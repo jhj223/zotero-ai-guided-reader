@@ -4,6 +4,7 @@ export interface WorkerEnv {
   LICENSE_AUDIENCE: string;
   LICENSE_KEY_ID: string;
   LICENSE_PRIVATE_KEY_PEM: string;
+  LICENSE_PREVIOUS_PUBLIC_KEYS_JSON?: string;
   SOURCE_URL: string;
   RATE_LIMIT_PEPPER: string;
   AFDIAN_USER_ID: string;
@@ -17,6 +18,7 @@ export interface RuntimeConfig {
   audience: string;
   keyId: string;
   privateKeyPem: string;
+  previousPublicKeys: Readonly<Record<string, JsonWebKey>>;
   sourceUrl: string;
   rateLimitPepper: string;
   monthlyPriceFen: 590;
@@ -74,6 +76,9 @@ export function loadRuntimeConfig(env: WorkerEnv): RuntimeConfig {
     audience,
     keyId,
     privateKeyPem,
+    previousPublicKeys: parsePreviousPublicKeys(
+      env.LICENSE_PREVIOUS_PUBLIC_KEYS_JSON,
+    ),
     sourceUrl,
     rateLimitPepper,
     monthlyPriceFen: 590,
@@ -97,6 +102,62 @@ export function loadRuntimeConfig(env: WorkerEnv): RuntimeConfig {
       ),
     },
   };
+}
+
+function parsePreviousPublicKeys(
+  serialized: string | undefined,
+): Readonly<Record<string, JsonWebKey>> {
+  const text = serialized?.trim();
+  if (!text) return {};
+  if (text.length > 64 * 1024) {
+    throw new Error("LICENSE_PREVIOUS_PUBLIC_KEYS_JSON is too large.");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    throw new Error("LICENSE_PREVIOUS_PUBLIC_KEYS_JSON must be valid JSON.");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("LICENSE_PREVIOUS_PUBLIC_KEYS_JSON must be an object.");
+  }
+  const result: Record<string, JsonWebKey> = {};
+  for (const [keyId, value] of Object.entries(parsed)) {
+    if (
+      !IDENTIFIER.test(keyId) ||
+      !value ||
+      typeof value !== "object" ||
+      Array.isArray(value)
+    ) {
+      throw new Error("LICENSE_PREVIOUS_PUBLIC_KEYS_JSON is invalid.");
+    }
+    const jwk = value as JsonWebKey;
+    if (
+      jwk.kty !== "RSA" ||
+      typeof jwk.n !== "string" ||
+      !/^[A-Za-z0-9_-]{128,1024}$/.test(jwk.n) ||
+      typeof jwk.e !== "string" ||
+      !/^[A-Za-z0-9_-]{1,16}$/.test(jwk.e) ||
+      jwk.d != null ||
+      jwk.p != null ||
+      jwk.q != null ||
+      jwk.dp != null ||
+      jwk.dq != null ||
+      jwk.qi != null
+    ) {
+      throw new Error("LICENSE_PREVIOUS_PUBLIC_KEYS_JSON is invalid.");
+    }
+    result[keyId] = {
+      kty: "RSA",
+      n: jwk.n,
+      e: jwk.e,
+      alg: "RS256",
+      use: "sig",
+      ext: true,
+      key_ops: ["verify"],
+    };
+  }
+  return result;
 }
 
 function strictHttpsUrl(value: string, name: string): string {

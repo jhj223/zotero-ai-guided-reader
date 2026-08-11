@@ -1,10 +1,15 @@
 /* global process */
 import { execFileSync } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const buildDirectory = resolve(".scaffold/build");
 await mkdir(buildDirectory, { recursive: true });
+for (const name of await readdir(buildDirectory)) {
+  if (/^sbom-.*\.cdx\.json$/.test(name)) {
+    await rm(resolve(buildDirectory, name), { force: true });
+  }
+}
 const npmCli = process.env.npm_execpath;
 if (!npmCli) {
   throw new Error("Run this script through npm run release:sbom.");
@@ -15,8 +20,16 @@ const targets = [
     output: resolve(buildDirectory, "sbom-plugin.cdx.json"),
   },
   {
+    directory: resolve("services/licensing-worker"),
+    output: resolve(buildDirectory, "sbom-licensing-worker.cdx.json"),
+  },
+  {
+    directory: resolve("services/afdian-webhook-relay"),
+    output: resolve(buildDirectory, "sbom-afdian-webhook-relay.cdx.json"),
+  },
+  {
     directory: resolve("services/licensing"),
-    output: resolve(buildDirectory, "sbom-licensing-service.cdx.json"),
+    output: resolve(buildDirectory, "sbom-legacy-licensing-service.cdx.json"),
   },
 ];
 

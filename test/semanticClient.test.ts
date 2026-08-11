@@ -48,6 +48,25 @@ test("disabled semantic provider performs no request", async () => {
   assert.deepEqual(await client.score("query", ["document"]), []);
 });
 
+test("rejects non-loopback plain HTTP before sending an embedding key", async () => {
+  let requested = false;
+  const client = new SemanticClient(
+    {
+      provider: "openai-compatible",
+      apiKey: "secret",
+      model: "embedding-model",
+      baseUrl: "http://api.example.test/v1",
+    },
+    async () => {
+      requested = true;
+      throw new Error("must not request");
+    },
+  );
+
+  await assert.rejects(client.score("query", ["document"]), /HTTPS/);
+  assert.equal(requested, false);
+});
+
 test("Jina adapter distinguishes retrieval queries from passages", async () => {
   const bodies: Array<Record<string, unknown>> = [];
   const client = new SemanticClient(

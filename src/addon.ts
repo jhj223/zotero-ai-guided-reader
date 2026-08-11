@@ -13,9 +13,6 @@ class Addon {
     locale?: {
       current: any;
     };
-    prefs?: {
-      window: Window;
-    };
   };
   // Lifecycle hooks
   public hooks: typeof hooks;

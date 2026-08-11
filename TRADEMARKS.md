@@ -10,7 +10,7 @@
 - 官方仓库：<https://github.com/jhj223/zotero-ai-guided-reader>；
 - 官方发行：上述仓库的 GitHub Releases；
 - 品牌与侵权联系：
-  <https://github.com/jhj223/zotero-ai-guided-reader/issues/new>。
+  <https://github.com/jhj223/zotero-ai-guided-reader/issues/new?template=ip-complaint.yml>。
 
 “Zotero AI 带读”、项目图标、发行页视觉元素以及能识别官方服务来源的组合标识，由
 运营者依法主张其实际享有的权利。项目没有声称这些标识已经注册为商标，也不使用 `®`。

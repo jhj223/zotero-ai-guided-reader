@@ -1,5 +1,10 @@
 import type { EntitlementRecord } from "./store";
-import { createPrivateKey, createPublicKey, createVerify } from "node:crypto";
+import {
+  createPrivateKey,
+  createPublicKey,
+  createVerify,
+  type JsonWebKey as NodeJsonWebKey,
+} from "node:crypto";
 
 const DAY_MS = 86_400_000;
 
@@ -8,6 +13,7 @@ export interface EntitlementSigningConfig {
   audience: string;
   keyId: string;
   privateKeyPem: string;
+  verificationKeys?: Readonly<Record<string, JsonWebKey>>;
 }
 
 export interface RefreshTokenClaims {
@@ -55,6 +61,12 @@ export async function signEntitlement(
     typ: "ZGAI-ENT",
     kid: config.keyId,
   });
+  const plannedOfflineUntil = Math.min(
+    record.validUntil - DAY_MS,
+    issuedAt + 30 * DAY_MS,
+  );
+  const offlineUntil =
+    plannedOfflineUntil > issuedAt ? plannedOfflineUntil : record.validUntil;
   const payload = encodeJson({
     version: 1,
     issuer: config.issuer,
@@ -64,7 +76,7 @@ export async function signEntitlement(
     kind: record.kind,
     planId: record.planId,
     issuedAt,
-    offlineUntil: Math.min(record.validUntil, issuedAt + 30 * DAY_MS),
+    offlineUntil,
     validUntil: record.validUntil,
   });
   const signed = `${header}.${payload}`;
@@ -93,13 +105,16 @@ export function verifyRefreshToken(
   const [encodedHeader, encodedPayload, encodedSignature] = parts;
   const header = decodeJson(encodedHeader);
   const claims = decodeJson(encodedPayload);
+  const headerValues =
+    header && typeof header === "object" && !Array.isArray(header)
+      ? (header as Record<string, unknown>)
+      : undefined;
   if (
-    !header ||
-    typeof header !== "object" ||
-    Array.isArray(header) ||
-    (header as Record<string, unknown>).alg !== "RS256" ||
-    (header as Record<string, unknown>).typ !== "ZGAI-ENT" ||
-    (header as Record<string, unknown>).kid !== config.keyId ||
+    !headerValues ||
+    headerValues.alg !== "RS256" ||
+    headerValues.typ !== "ZGAI-ENT" ||
+    typeof headerValues.kid !== "string" ||
+    !/^[A-Za-z0-9._-]{3,128}$/.test(headerValues.kid) ||
     !claims ||
     typeof claims !== "object" ||
     Array.isArray(claims)
@@ -131,7 +146,10 @@ export function verifyRefreshToken(
   const verifier = createVerify("RSA-SHA256");
   verifier.update(`${encodedHeader}.${encodedPayload}`, "utf8");
   verifier.end();
-  const publicKey = createPublicKey(createPrivateKey(config.privateKeyPem));
+  const publicKey =
+    headerValues.kid === config.keyId
+      ? createPublicKey(createPrivateKey(config.privateKeyPem))
+      : publicKeyFromRing(headerValues.kid, config.verificationKeys);
   if (!verifier.verify(publicKey, base64UrlToBytes(encodedSignature))) {
     throw new Error("INVALID_ENTITLEMENT_TOKEN");
   }
@@ -143,6 +161,19 @@ export function verifyRefreshToken(
     offlineUntil: values.offlineUntil,
     validUntil: values.validUntil,
   };
+}
+
+function publicKeyFromRing(
+  keyId: string,
+  verificationKeys?: Readonly<Record<string, JsonWebKey>>,
+) {
+  const jwk = verificationKeys?.[keyId];
+  if (!jwk) throw new Error("INVALID_ENTITLEMENT_TOKEN");
+  try {
+    return createPublicKey({ key: jwk as NodeJsonWebKey, format: "jwk" });
+  } catch {
+    throw new Error("INVALID_ENTITLEMENT_TOKEN");
+  }
 }
 
 function validTimestamp(value: unknown): value is number {

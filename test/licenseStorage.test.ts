@@ -42,3 +42,23 @@ test("stores only bounded compact entitlement tokens", () => {
   storage.clearEntitlementToken();
   assert.equal(storage.readEntitlementToken(), "");
 });
+
+test("persists only a validated pending order recovery capability", () => {
+  const { values, storage } = setup();
+  const order = {
+    orderId: "order_123456",
+    pollToken: "poll_12345678",
+    status: "pending" as const,
+    planId: "pro_monthly" as const,
+    amountFen: 590,
+    expiresAt: "2026-08-11T12:00:00.000Z",
+    checkoutUrl:
+      "https://ifdian.net/order/create?plan_id=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&product_type=0&custom_order_id=co_12345678901234567890",
+  };
+
+  storage.savePendingOrder(order);
+  assert.deepEqual(storage.readPendingOrder(), order);
+  assert.match(values.get("licensePendingOrder") || "", /poll_12345678/);
+  storage.clearPendingOrder();
+  assert.equal(storage.readPendingOrder(), undefined);
+});

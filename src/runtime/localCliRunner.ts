@@ -1,5 +1,8 @@
 import {
   buildCliArguments,
+  cliExecutableCandidates,
+  cliExecutableNames,
+  type CliPlatform,
   parseCliOutput,
   validateCliModel,
   type LocalCliProviderId,
@@ -128,40 +131,27 @@ async function findCliExecutable(
   provider: LocalCliProviderId,
   subprocess: SubprocessApi,
 ): Promise<string> {
-  const appData = Services.env.get("APPDATA");
-  const known =
-    provider === "codex-cli"
-      ? PathUtils.join(
-          appData,
-          "npm",
-          "node_modules",
-          "@openai",
-          "codex",
-          "node_modules",
-          "@openai",
-          "codex-win32-x64",
-          "vendor",
-          "x86_64-pc-windows-msvc",
-          "bin",
-          "codex.exe",
-        )
-      : PathUtils.join(
-          appData,
-          "npm",
-          "node_modules",
-          "@anthropic-ai",
-          "claude-code",
-          "bin",
-          "claude.exe",
-        );
-  if (await IOUtils.exists(known)) return known;
-
-  const name = provider === "codex-cli" ? "codex.exe" : "claude.exe";
-  const searched = await subprocess.pathSearch?.(name);
-  if (searched && (await IOUtils.exists(searched))) return searched;
+  const platform = runtimePlatform();
+  const candidates = cliExecutableCandidates(provider, platform, {
+    APPDATA: Services.env.get("APPDATA"),
+    HOME: Services.env.get("HOME"),
+  });
+  for (const candidate of candidates) {
+    if (await IOUtils.exists(candidate)) return candidate;
+  }
+  for (const name of cliExecutableNames(provider, platform)) {
+    const searched = await subprocess.pathSearch?.(name);
+    if (searched && (await IOUtils.exists(searched))) return searched;
+  }
   throw new Error(
     `${providerLabel(provider)} 未安装或未找到原生可执行文件。请先在终端完成安装和登录。`,
   );
+}
+
+function runtimePlatform(): CliPlatform {
+  if (Services.appinfo.OS === "WINNT") return "windows";
+  if (Services.appinfo.OS === "Darwin") return "macos";
+  return "linux";
 }
 
 function waitForProcess(

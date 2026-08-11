@@ -32,7 +32,7 @@ export function buildAnkiTsv(input: { title: string; guideText: string }): {
 
   const content = [
     "#separator:Tab",
-    "#html:true",
+    "#html:false",
     "#tags column:3",
     "#columns:Front\tBack\tTags",
     ...rows.map((row) => row.map(escapeTsv).join("\t")),
@@ -75,5 +75,5 @@ function quoteTag(title: string): string {
 }
 
 function escapeTsv(value: string): string {
-  return value.replace(/\t/g, " ").replace(/\r?\n/g, "<br>");
+  return value.replace(/\t/g, " ").replace(/\r?\n/g, " ");
 }
