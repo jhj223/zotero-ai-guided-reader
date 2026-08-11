@@ -1,7 +1,7 @@
 {
   "name": "zotero-ai-guided-reader",
   "type": "module",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Zotero 9 AI 论文带读：MinerU 解析、证据回跳、图表索引、笔记与 Anki 导出",
   "config": {
     "addonName": "Zotero AI 带读",
