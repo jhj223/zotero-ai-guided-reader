@@ -54,7 +54,7 @@
   },
   "devDependencies": {
     "@types/katex": "^0.16.8",
-    "@types/node": "^24.10.0",
+    "@types/node": "^26.2.0",
     "@types/react": "^19.2.8",
     "@types/react-dom": "^19.2.3",
     "@zotero-plugin/eslint-config": "^0.6.10",
