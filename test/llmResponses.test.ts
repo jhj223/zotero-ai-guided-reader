@@ -471,6 +471,45 @@ test("adds a table-backed final selection when the model omits that bullet", () 
   );
 });
 
+test("uses the table-matched metric in an added final selection", () => {
+  const anchorsWithTrailingMetric = anchors.map((anchor) =>
+    anchor.id === "corrosion_text"
+      ? {
+          ...anchor,
+          text: `${anchor.text.replace(" 因此", " 缓蚀率高达 0.85 因此")}`,
+        }
+      : anchor,
+  );
+  const outline = filterOutlineToKnownAnchors(
+    {
+      title: "Paper",
+      sections: [
+        {
+          title: "Results",
+          anchorIds: ["chunk_0002", "corrosion_text", "corrosion_table_3"],
+          bullets: [
+            {
+              claim: "The dispersion remained stable.",
+              anchorIds: [],
+              evidence: [
+                {
+                  anchorId: "chunk_0002",
+                  quote: "The dispersion remained stable",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    anchorsWithTrailingMetric,
+  );
+
+  const selection = outline.sections[0].bullets[1];
+  assert.match(selection.claim, /表 3.*39\.494.*缓蚀剂1/u);
+  assert.doesNotMatch(selection.claim, /指标 0\.85/u);
+});
+
 test("restores an omitted inhibitor number from a uniquely matching table row", () => {
   const outline = filterOutlineToKnownAnchors(
     {

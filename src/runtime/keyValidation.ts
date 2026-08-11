@@ -1,7 +1,11 @@
 import { LLM_PROVIDERS } from "../core/settings";
 import type { ProviderSettings } from "../core/types";
 import { validateLocalCli } from "./localCliRunner";
-import { fetchWithTimeout, normalizeServiceBaseUrl } from "./networkSafety";
+import {
+  ensureApiVersionBaseUrl,
+  fetchWithTimeout,
+  normalizeServiceBaseUrl,
+} from "./networkSafety";
 
 export interface KeyCheckResult {
   ok: boolean;
@@ -90,7 +94,7 @@ export async function validateLlmKey(
     if (settings.llmProvider === "anthropic") {
       const response = await fetchWithTimeout(
         fetchImpl,
-        `${baseUrl}/v1/models`,
+        `${ensureApiVersionBaseUrl(baseUrl, "v1")}/models`,
         {
           method: "GET",
           redirect: "error",

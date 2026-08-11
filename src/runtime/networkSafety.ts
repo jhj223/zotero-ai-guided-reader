@@ -34,6 +34,15 @@ export function normalizeSignedHttpsUrl(value: string, label: string): string {
   return normalizeServiceBaseUrl(value, { label });
 }
 
+export function ensureApiVersionBaseUrl(
+  baseUrl: string,
+  version: string,
+): string {
+  const normalizedVersion = version.replace(/^\/+|\/+$/g, "");
+  const suffix = `/${normalizedVersion}`;
+  return baseUrl.endsWith(suffix) ? baseUrl : `${baseUrl}${suffix}`;
+}
+
 export async function fetchWithTimeout<T>(
   fetchImpl: FetchLike<T>,
   url: string,

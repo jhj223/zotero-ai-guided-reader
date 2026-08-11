@@ -61,10 +61,12 @@ export async function signEntitlement(
     typ: "ZGAI-ENT",
     kid: config.keyId,
   });
-  const offlineUntil = Math.max(
-    issuedAt,
-    Math.min(record.validUntil - DAY_MS, issuedAt + 30 * DAY_MS),
+  const plannedOfflineUntil = Math.min(
+    record.validUntil - DAY_MS,
+    issuedAt + 30 * DAY_MS,
   );
+  const offlineUntil =
+    plannedOfflineUntil > issuedAt ? plannedOfflineUntil : record.validUntil;
   const payload = encodeJson({
     version: 1,
     issuer: config.issuer,

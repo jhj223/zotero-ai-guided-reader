@@ -24,3 +24,33 @@ test("rejects an insecure LLM base URL before transmitting the API key", async (
   );
   assert.equal(requested, false);
 });
+
+test("does not duplicate Anthropic v1 in the messages endpoint", async () => {
+  const calls: string[] = [];
+  const client = new LLMClient(
+    {
+      llmProvider: "anthropic",
+      llmApiKey: "secret",
+      mineruApiKey: "mineru",
+      model: "claude-sonnet-4-5",
+      baseUrl: "https://api.anthropic.com/v1",
+    },
+    async (url) => {
+      calls.push(url);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          content: [{ type: "text", text: '{"title":"Paper","sections":[]}' }],
+        }),
+      } as Response;
+    },
+  );
+
+  await client.generateOutline({
+    title: "Paper",
+    anchors: [],
+    annotations: [],
+  });
+  assert.deepEqual(calls, ["https://api.anthropic.com/v1/messages"]);
+});

@@ -356,7 +356,7 @@ function addOmittedTableBackedSelections(
       continue;
     }
     const visibleSelection = toVisibleSourceText(selectionQuote);
-    const claim = `表 ${match.tableNumber}中与原文指标 ${metric} 对应的条目是${match.entity}；原文随后写明“${visibleSelection}”。`;
+    const claim = `表 ${match.tableNumber}中与原文指标 ${match.metric} 对应的条目是${match.entity}；原文随后写明“${visibleSelection}”。`;
     const visualEvidence = [{ anchorId: match.tableAnchor.id }];
     if (
       !numberedEntitiesAreGrounded(claim, evidence, visualEvidence, anchorById)

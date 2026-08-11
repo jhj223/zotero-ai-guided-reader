@@ -14,6 +14,7 @@ import type {
 } from "../core/types";
 import { runLocalCli } from "./localCliRunner";
 import {
+  ensureApiVersionBaseUrl,
   fetchWithTimeout,
   normalizeServiceBaseUrl,
   type FetchLike,
@@ -101,7 +102,7 @@ export class LLMClient {
     );
     const response = await fetchWithTimeout(
       this.fetchImpl,
-      `${baseUrl}/v1/messages`,
+      `${ensureApiVersionBaseUrl(baseUrl, "v1")}/messages`,
       {
         method: "POST",
         redirect: "error",

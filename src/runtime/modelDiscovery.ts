@@ -6,7 +6,11 @@ import {
 } from "../core/semanticSettings";
 import type { ProviderSettings } from "../core/types";
 import type { FetchLike } from "./keyValidation";
-import { fetchWithTimeout, normalizeServiceBaseUrl } from "./networkSafety";
+import {
+  ensureApiVersionBaseUrl,
+  fetchWithTimeout,
+  normalizeServiceBaseUrl,
+} from "./networkSafety";
 
 const DISCOVERY_TIMEOUT_MS = 30_000;
 
@@ -37,7 +41,7 @@ export async function fetchLlmModels(
 
   const anthropic = settings.llmProvider === "anthropic";
   const endpoint = anthropic
-    ? `${baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`}/models`
+    ? `${ensureApiVersionBaseUrl(baseUrl, "v1")}/models`
     : `${baseUrl}/models${
         settings.llmProvider === "siliconflow" ? "?type=text&sub_type=chat" : ""
       }`;
