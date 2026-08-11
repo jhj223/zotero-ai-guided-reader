@@ -19,7 +19,7 @@
   "devDependencies": {
     "@types/node": "^24.10.0",
     "@types/qrcode": "^1.5.5",
-    "tsx": "^4.21.0",
+    "tsx": "^4.23.11",
     "typescript": "^5.9.3"
   }
 }
