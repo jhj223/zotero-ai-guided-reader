@@ -2,8 +2,13 @@ import {
   semanticProviderDefinition,
   type SemanticProviderSettings,
 } from "../core/semanticSettings";
+import {
+  fetchWithTimeout,
+  normalizeServiceBaseUrl,
+  type FetchLike,
+} from "./networkSafety";
 
-type FetchLike = typeof fetch;
+const EMBEDDING_TIMEOUT_MS = 60_000;
 
 export class SemanticClient {
   constructor(
@@ -20,6 +25,7 @@ export class SemanticClient {
     if (definition.kind !== "ollama" && !this.settings.apiKey.trim()) {
       throw new Error("语义定位 API Key 未填写。");
     }
+    this.baseUrl();
 
     let queryVector: number[];
     let documentVectors: number[][];
@@ -70,15 +76,12 @@ export class SemanticClient {
         : inputType
           ? { input_type: inputType }
           : {};
-    const payload = await this.request(
-      `${trimEnd(this.settings.baseUrl)}/embeddings`,
-      {
-        model: this.settings.model,
-        input,
-        ...outputFormat,
-        ...taskType,
-      },
-    );
+    const payload = await this.request(`${this.baseUrl()}/embeddings`, {
+      model: this.settings.model,
+      input,
+      ...outputFormat,
+      ...taskType,
+    });
     const data = Array.isArray(payload.data) ? payload.data : [];
     return data
       .map((item, index) => ({
@@ -93,15 +96,12 @@ export class SemanticClient {
     texts: string[],
     inputType: "search_query" | "search_document",
   ): Promise<number[][]> {
-    const payload = await this.request(
-      `${trimEnd(this.settings.baseUrl)}/embed`,
-      {
-        model: this.settings.model,
-        texts,
-        input_type: inputType,
-        embedding_types: ["float"],
-      },
-    );
+    const payload = await this.request(`${this.baseUrl()}/embed`, {
+      model: this.settings.model,
+      texts,
+      input_type: inputType,
+      embedding_types: ["float"],
+    });
     const embeddings = payload.embeddings as { float?: unknown } | undefined;
     return Array.isArray(embeddings?.float)
       ? embeddings.float.map(toVector)
@@ -109,13 +109,10 @@ export class SemanticClient {
   }
 
   private async embedOllama(input: string[]): Promise<number[][]> {
-    const payload = await this.request(
-      `${trimEnd(this.settings.baseUrl)}/api/embed`,
-      {
-        model: this.settings.model,
-        input,
-      },
-    );
+    const payload = await this.request(`${this.baseUrl()}/api/embed`, {
+      model: this.settings.model,
+      input,
+    });
     return Array.isArray(payload.embeddings)
       ? payload.embeddings.map(toVector)
       : [];
@@ -131,11 +128,17 @@ export class SemanticClient {
     if (this.settings.apiKey) {
       headers.Authorization = `Bearer ${this.settings.apiKey}`;
     }
-    const response = await this.fetchImpl(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
+    const response = await fetchWithTimeout(
+      this.fetchImpl,
+      url,
+      {
+        method: "POST",
+        redirect: "error",
+        headers,
+        body: JSON.stringify(body),
+      },
+      EMBEDDING_TIMEOUT_MS,
+    );
     const payload = asRecord(await response.json());
     if (!response.ok) {
       const error = asRecord(payload.error);
@@ -149,16 +152,20 @@ export class SemanticClient {
     }
     return payload;
   }
+
+  private baseUrl(): string {
+    const definition = semanticProviderDefinition(this.settings.provider);
+    return normalizeServiceBaseUrl(this.settings.baseUrl, {
+      allowLoopbackHttp: definition.kind === "ollama",
+      label: "语义定位 Base URL",
+    });
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
     : {};
-}
-
-function trimEnd(value: string): string {
-  return value.replace(/\/+$/, "");
 }
 
 function toVector(value: unknown): number[] {

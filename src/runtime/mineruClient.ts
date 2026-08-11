@@ -6,6 +6,12 @@ import {
 import { describeMinerUAsset } from "../core/mineruAssets";
 import type { MinerUProgress, NormalizedMinerUOutput } from "../core/types";
 import { PluginCache } from "./cache";
+import {
+  fetchWithTimeout,
+  normalizeSignedHttpsUrl,
+  readBoundedArrayBuffer,
+  type FetchLike,
+} from "./networkSafety";
 import type { ResolvedMinerUSettings } from "./preferences";
 
 const API_BASE = "https://mineru.net/api/v4";
@@ -13,6 +19,10 @@ const MAX_POLLS = 240;
 const MAX_ASSET_COUNT = 100;
 const MAX_ASSET_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_ASSET_BYTES = 50 * 1024 * 1024;
+const MAX_ZIP_BYTES = 256 * 1024 * 1024;
+const API_TIMEOUT_MS = 60_000;
+const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
 
 export type ProgressCallback = (progress: MinerUProgress) => void;
 
@@ -42,6 +52,7 @@ export class MinerUClient {
   constructor(
     private readonly settings: ResolvedMinerUSettings,
     private readonly cache = new PluginCache(),
+    private readonly fetchImpl: FetchLike = fetch,
   ) {}
 
   async parseLocalPdf(input: {
@@ -68,10 +79,16 @@ export class MinerUClient {
       message: "Uploading PDF to MinerU signed URL",
     });
     const bytes = await IOUtils.read(input.filePath);
-    const uploadResponse = await fetch(fileUrl, {
-      method: "PUT",
-      body: bytes,
-    });
+    const uploadResponse = await fetchWithTimeout(
+      this.fetchImpl,
+      fileUrl,
+      {
+        method: "PUT",
+        body: bytes,
+        redirect: "error",
+      },
+      UPLOAD_TIMEOUT_MS,
+    );
     if (!uploadResponse.ok) {
       throw new Error(
         `MinerU signed upload failed: HTTP ${uploadResponse.status}`,
@@ -122,7 +139,10 @@ export class MinerUClient {
       throw new Error("MinerU did not return a batch id and signed file URL.");
     }
 
-    return { batchId, fileUrl };
+    return {
+      batchId,
+      fileUrl: normalizeSignedHttpsUrl(fileUrl, "MinerU 签名上传地址"),
+    };
   }
 
   private async pollForZipUrl(
@@ -151,7 +171,10 @@ export class MinerUClient {
         if (!result?.full_zip_url) {
           throw new Error("MinerU result is done but full_zip_url is missing.");
         }
-        return result.full_zip_url;
+        return normalizeSignedHttpsUrl(
+          result.full_zip_url,
+          "MinerU 结果下载地址",
+        );
       }
       if (state === "failed") {
         throw new Error(result?.err_msg || "MinerU parsing failed.");
@@ -166,13 +189,20 @@ export class MinerUClient {
     zipUrl: string,
     attachmentKey: string,
   ): Promise<NormalizedMinerUOutput> {
-    const response = await fetch(zipUrl);
+    const response = await fetchWithTimeout(
+      this.fetchImpl,
+      normalizeSignedHttpsUrl(zipUrl, "MinerU 结果下载地址"),
+      { redirect: "error" },
+      DOWNLOAD_TIMEOUT_MS,
+    );
     if (!response.ok) {
       throw new Error(
         `MinerU result ZIP download failed: HTTP ${response.status}`,
       );
     }
-    const zip = await JSZip.loadAsync(await response.arrayBuffer());
+    const zip = await JSZip.loadAsync(
+      await readBoundedArrayBuffer(response, MAX_ZIP_BYTES, "MinerU 结果 ZIP"),
+    );
 
     const readJson = async (suffixes: string[]) => {
       const file = findZipFile(zip, suffixes);
@@ -235,15 +265,21 @@ export class MinerUClient {
     url: string,
     init: RequestInit,
   ): Promise<MinerUResponse<T>> {
-    const response = await fetch(url, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${this.settings.apiKey}`,
-        ...(init.headers || {}),
+    const response = await fetchWithTimeout(
+      this.fetchImpl,
+      url,
+      {
+        ...init,
+        redirect: "error",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${this.settings.apiKey}`,
+          ...(init.headers || {}),
+        },
       },
-    });
+      API_TIMEOUT_MS,
+    );
 
     const payload = (await response.json()) as unknown as MinerUResponse<T>;
     if (!response.ok || payload.code !== 0) {

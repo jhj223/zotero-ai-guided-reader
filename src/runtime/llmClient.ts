@@ -13,9 +13,19 @@ import type {
   SectionGuide,
 } from "../core/types";
 import { runLocalCli } from "./localCliRunner";
+import {
+  fetchWithTimeout,
+  normalizeServiceBaseUrl,
+  type FetchLike,
+} from "./networkSafety";
+
+const GENERATION_TIMEOUT_MS = 5 * 60 * 1000;
 
 export class LLMClient {
-  constructor(private readonly settings: ProviderSettings) {}
+  constructor(
+    private readonly settings: ProviderSettings,
+    private readonly fetchImpl: FetchLike = fetch,
+  ) {}
 
   async generateOutline(input: {
     title: string;
@@ -85,22 +95,31 @@ export class LLMClient {
     system: string;
     user: string;
   }): Promise<string> {
-    const baseUrl = this.settings.baseUrl || LLM_PROVIDERS.anthropic.baseUrl!;
-    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/v1/messages`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": this.settings.llmApiKey,
-        "anthropic-version": "2023-06-01",
+    const baseUrl = normalizeServiceBaseUrl(
+      this.settings.baseUrl || LLM_PROVIDERS.anthropic.baseUrl!,
+      { label: "LLM Base URL" },
+    );
+    const response = await fetchWithTimeout(
+      this.fetchImpl,
+      `${baseUrl}/v1/messages`,
+      {
+        method: "POST",
+        redirect: "error",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": this.settings.llmApiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: this.settings.model || LLM_PROVIDERS.anthropic.defaultModel,
+          max_tokens: 4096,
+          temperature: 0.2,
+          system: input.system,
+          messages: [{ role: "user", content: input.user }],
+        }),
       },
-      body: JSON.stringify({
-        model: this.settings.model || LLM_PROVIDERS.anthropic.defaultModel,
-        max_tokens: 4096,
-        temperature: 0.2,
-        system: input.system,
-        messages: [{ role: "user", content: input.user }],
-      }),
-    });
+      GENERATION_TIMEOUT_MS,
+    );
     const payload = (await response.json()) as {
       content?: Array<{ type: string; text?: string }>;
       error?: { message?: string };
@@ -119,11 +138,16 @@ export class LLMClient {
     json: boolean;
   }): Promise<string> {
     const provider = LLM_PROVIDERS[this.settings.llmProvider];
-    const baseUrl = this.settings.baseUrl || provider.baseUrl || "";
-    const response = await fetch(
-      `${baseUrl.replace(/\/$/, "")}/chat/completions`,
+    const baseUrl = normalizeServiceBaseUrl(
+      this.settings.baseUrl || provider.baseUrl || "",
+      { label: "LLM Base URL" },
+    );
+    const response = await fetchWithTimeout(
+      this.fetchImpl,
+      `${baseUrl}/chat/completions`,
       {
         method: "POST",
+        redirect: "error",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${this.settings.llmApiKey}`,
@@ -138,6 +162,7 @@ export class LLMClient {
           ],
         }),
       },
+      GENERATION_TIMEOUT_MS,
     );
     const payload = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;

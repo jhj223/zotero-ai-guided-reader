@@ -1,6 +1,7 @@
 import { LLM_PROVIDERS } from "../core/settings";
 import type { ProviderSettings } from "../core/types";
 import { validateLocalCli } from "./localCliRunner";
+import { fetchWithTimeout, normalizeServiceBaseUrl } from "./networkSafety";
 
 export interface KeyCheckResult {
   ok: boolean;
@@ -23,6 +24,7 @@ type CliValidator = (
 ) => Promise<KeyCheckResult>;
 
 const MINERU_BATCH_URL = "https://mineru.net/api/v4/file-urls/batch";
+const VALIDATION_TIMEOUT_MS = 30_000;
 
 export async function validateMinerUKey(
   apiKey: string,
@@ -32,17 +34,23 @@ export async function validateMinerUKey(
 
   let response: FetchResponseLike;
   try {
-    response = await fetchImpl(MINERU_BATCH_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${apiKey}`,
+    response = await fetchWithTimeout(
+      fetchImpl,
+      MINERU_BATCH_URL,
+      {
+        method: "POST",
+        redirect: "error",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        // Parameter-level rejection is sufficient to verify authentication and
+        // does not create a parsing task or consume page quota.
+        body: JSON.stringify({ files: [] }),
       },
-      // Parameter-level rejection is sufficient to verify authentication and
-      // does not create a parsing task or consume page quota.
-      body: JSON.stringify({ files: [] }),
-    });
+      VALIDATION_TIMEOUT_MS,
+    );
   } catch (error) {
     return {
       ok: false,
@@ -74,42 +82,60 @@ export async function validateLlmKey(
   }
 
   const provider = LLM_PROVIDERS[settings.llmProvider];
-  const baseUrl = (settings.baseUrl || provider.baseUrl || "").replace(
-    /\/$/,
-    "",
+  const baseUrl = normalizeServiceBaseUrl(
+    settings.baseUrl || provider.baseUrl || "",
+    { label: "LLM Base URL" },
   );
   try {
     if (settings.llmProvider === "anthropic") {
-      const response = await fetchImpl(`${baseUrl}/v1/models`, {
-        method: "GET",
-        headers: {
-          "x-api-key": settings.llmApiKey,
-          "anthropic-version": "2023-06-01",
+      const response = await fetchWithTimeout(
+        fetchImpl,
+        `${baseUrl}/v1/models`,
+        {
+          method: "GET",
+          redirect: "error",
+          headers: {
+            "x-api-key": settings.llmApiKey,
+            "anthropic-version": "2023-06-01",
+          },
         },
-      });
+        VALIDATION_TIMEOUT_MS,
+      );
       return interpretLlmStatus(response.status, provider.label);
     }
 
-    const models = await fetchImpl(`${baseUrl}/models`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${settings.llmApiKey}` },
-    });
+    const models = await fetchWithTimeout(
+      fetchImpl,
+      `${baseUrl}/models`,
+      {
+        method: "GET",
+        redirect: "error",
+        headers: { Authorization: `Bearer ${settings.llmApiKey}` },
+      },
+      VALIDATION_TIMEOUT_MS,
+    );
     if (models.status !== 404 && models.status !== 405) {
       return interpretLlmStatus(models.status, provider.label);
     }
 
-    const chat = await fetchImpl(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${settings.llmApiKey}`,
+    const chat = await fetchWithTimeout(
+      fetchImpl,
+      `${baseUrl}/chat/completions`,
+      {
+        method: "POST",
+        redirect: "error",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${settings.llmApiKey}`,
+        },
+        body: JSON.stringify({
+          model: settings.model || provider.defaultModel,
+          max_tokens: 1,
+          messages: [{ role: "user", content: "ping" }],
+        }),
       },
-      body: JSON.stringify({
-        model: settings.model || provider.defaultModel,
-        max_tokens: 1,
-        messages: [{ role: "user", content: "ping" }],
-      }),
-    });
+      VALIDATION_TIMEOUT_MS,
+    );
     if (chat.ok) {
       return { ok: true, message: `LLM Key 校验通过（${provider.label}）` };
     }
