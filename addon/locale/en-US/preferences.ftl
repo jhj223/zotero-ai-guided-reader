@@ -1,6 +1,8 @@
 pref-title = Zotero AI Guided Reader
 pref-enable =
     .label = Enable guided reading sidebar
+pref-license-section = License and subscription
+pref-license-help = Monthly and yearly plans renew manually and never auto-charge. The plugin refreshes and unlocks Pro after payment is confirmed.
 pref-llm-section = Guided reading LLM
 pref-llm-provider = Provider
 pref-llm-key = LLM API Key

@@ -18,6 +18,7 @@ import {
   readSemanticSettings,
 } from "../runtime/preferences";
 import { SemanticClient } from "../runtime/semanticClient";
+import { mountLicensePreferences } from "../ui/LicensePreferencesApp";
 import { getPref, setPref } from "../utils/prefs";
 
 export async function registerPrefsScripts(window: Window) {
@@ -30,6 +31,7 @@ export async function registerPrefsScripts(window: Window) {
   bindValidateButton(window, "semantic");
   bindProviderControls(window);
   bindSemanticControls(window);
+  mountLicensePreferences(window);
 }
 
 function bindSemanticControls(win: Window) {

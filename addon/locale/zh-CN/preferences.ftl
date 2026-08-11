@@ -1,6 +1,8 @@
 pref-title = Zotero AI 带读
 pref-enable =
     .label = 启用带读侧边栏
+pref-license-section = 授权与订阅
+pref-license-help = 月付与年付均为手动续费，不会自动扣款。付款后插件会自动刷新并开通 Pro。
 pref-llm-section = 带读生成模型
 pref-llm-provider = Provider
 pref-llm-key = LLM API Key

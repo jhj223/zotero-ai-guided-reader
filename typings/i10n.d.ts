@@ -8,6 +8,8 @@ export type FluentMessageId =
   | 'pref-enable'
   | 'pref-fetch-models'
   | 'pref-help'
+  | 'pref-license-help'
+  | 'pref-license-section'
   | 'pref-llm-base-url'
   | 'pref-llm-custom-model'
   | 'pref-llm-key'

@@ -6,6 +6,8 @@ import {
   registerLibraryContextMenu,
   unregisterLibraryContextMenu,
 } from "./runtime/libraryContextMenu";
+import { PREFERENCES_PANE_ID } from "./runtime/pluginPreferences";
+import { unmountAllLicensePreferences } from "./ui/LicensePreferencesApp";
 
 async function onStartup() {
   await Promise.all([
@@ -38,6 +40,7 @@ async function onMainWindowUnload(_win: Window): Promise<void> {
 }
 
 function onShutdown(): void {
+  unmountAllLicensePreferences();
   unregisterLibraryContextMenu();
   unregisterReaderView();
   ztoolkit.unregisterAll();
@@ -71,6 +74,7 @@ function onDialogEvents(_type: string) {
 
 function registerPrefs() {
   Zotero.PreferencePanes.register({
+    id: PREFERENCES_PANE_ID,
     pluginID: addon.data.config.addonID,
     src: rootURI + "content/preferences.xhtml",
     label: getString("prefs-title"),

@@ -19,6 +19,7 @@ import type {
 } from "../core/types";
 import { GuidedReadingService } from "../runtime/guidedReadingService";
 import { openAnchor } from "../runtime/highlight";
+import { openLicensePreferences } from "../runtime/pluginPreferences";
 import { isPluginEnabled } from "../runtime/preferences";
 import { LicensePanel } from "./LicensePanel";
 import { useLicenseController } from "./useLicenseController";
@@ -139,7 +140,11 @@ export function GuidedReaderApp({ item }: { item: Zotero.Item }) {
         <div className="zg-eyebrow">AI 带读</div>
         <h2>{service.title()}</h2>
       </header>
-      <LicensePanel controller={license} />
+      <LicensePanel
+        controller={license}
+        compact
+        onManage={openLicensePreferences}
+      />
 
       <div className="zg-toolbar">
         <button
@@ -693,23 +698,6 @@ const styles = `
 .zg-header { border-bottom: 1px solid #d8dde6; margin-bottom: 10px; padding-bottom: 8px; }
 .zg-eyebrow { color: #5f6b7a; font-size: 11px; }
 .zg-header h2 { font-size: 15px; line-height: 1.35; margin: 2px 0 0; }
-.zg-license { background: #f7fafc; border: 1px solid #d3dce6; border-radius: 8px; margin-bottom: 10px; min-width: 0; overflow: hidden; padding: 8px; }
-.zg-license-head { align-items: baseline; display: flex; flex-wrap: wrap; gap: 4px 10px; justify-content: space-between; min-width: 0; }
-.zg-license-expiry, .zg-license-hint { color: #647282; font-size: 11px; overflow-wrap: anywhere; }
-.zg-license-error, .zg-license-message { border-radius: 5px; font-size: 12px; margin-top: 6px; overflow-wrap: anywhere; padding: 5px 7px; }
-.zg-license-error { background: #fff1f1; color: #8a1f1f; }
-.zg-license-message { background: #edf8f1; color: #24533a; }
-.zg-plan-grid { display: grid; gap: 6px; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); margin-top: 7px; min-width: 0; }
-.zg-plan-grid button { align-items: flex-start; display: flex; flex-direction: column; min-width: 0; padding: 7px 8px; text-align: left; }
-.zg-plan-grid button span, .zg-plan-grid button strong, .zg-plan-grid button small { max-width: 100%; overflow-wrap: anywhere; }
-.zg-plan-grid button strong { color: #174f86; font-size: 14px; }
-.zg-plan-grid button small { color: #647282; font-size: 10px; }
-.zg-payment { align-items: center; display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(136px, 100%), 1fr)); margin-top: 8px; min-width: 0; }
-.zg-payment-link { grid-template-columns: minmax(0, 1fr); }
-.zg-payment img { background: white; border: 1px solid #d3dce6; box-sizing: border-box; display: block; height: auto; max-width: 100%; width: 136px; }
-.zg-payment-meta { display: flex; flex-direction: column; min-width: 0; }
-.zg-payment-meta span { color: #647282; font-size: 11px; overflow-wrap: anywhere; }
-.zg-payment-actions { display: grid; gap: 6px; grid-column: 1 / -1; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); min-width: 0; }
 .zg-toolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 8px; }
 .zg-root button { background: #f7f9fb; border: 1px solid #c8d0da; border-radius: 6px; color: #202124; cursor: pointer; font: inherit; min-height: 28px; }
 .zg-root button:disabled { cursor: not-allowed; opacity: .55; }
